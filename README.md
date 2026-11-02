@@ -9,7 +9,8 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Liste à colonnes configurables** : état Git, taille, date de modification, tags. Tri par nom, taille ou date.
 - **État Git** : branche, commits à pousser ou à récupérer, statut de chaque fichier (Modifié, Nouveau, Ignoré, Conflit). La colonne n'apparaît que dans un dépôt.
 - **Couper / copier / coller** (Ctrl+X, Ctrl+C, Ctrl+V) et **glisser-déposer** : déposer un élément le déplace (couper/coller), sur un autre panneau, un dossier, une épingle, une tuile de la barre ou un morceau du chemin.
-- **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z).
+- **Conflits de noms** : quand le nom est déjà pris, une fenêtre compare les deux éléments (date, taille) et propose Remplacer, Garder les deux (« nom (2) ») ou Ignorer, avec une case pour appliquer le choix à tous. Échap annule le collage.
+- **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z), y compris les remplacements : l'élément remplacé, mis à la corbeille, revient à sa place.
 - **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), tags.
 - **Jeux (Windows)** : Steam, Battle.net, Ubisoft Connect, Epic Games, EA app et GOG Galaxy sont détectés avec leur icône ; un clic ouvre le dossier du jeu (ou déplie la liste quand il y en a plusieurs), clic droit pour lancer le launcher.
 - **Recherche** depuis le champ en haut à gauche : dossier personnel, dossiers ouverts, épingles et dossiers des jeux.
@@ -146,7 +147,7 @@ Tests du backend : `cd src-tauri && cargo test`.
 
 ## Limites connues de la v0.1
 
-- **Conflits de noms** : coller un fichier qui existe déjà crée « nom (2) » au lieu de proposer de remplacer.
+- **Dossiers en conflit** : « Remplacer » remplace le dossier entier ; il n'y a pas encore de fusion du contenu des deux dossiers.
 - **Presse-papiers interne** : un Ctrl+C dans Ariane ne se colle pas encore dans Nautilus ou l’Explorateur Windows, et inversement.
 - **Glisser-déposer avec les autres applications** (vers Firefox, VS Code…) pas encore géré.
 - **Pas de surveillance automatique** du disque : la liste s'actualise après chaque action, au retour dans la fenêtre et avec F5.

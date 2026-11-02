@@ -19,6 +19,7 @@ pub fn run() {
             fichiers::creer_fichier,
             fichiers::renommer,
             fichiers::mettre_a_la_corbeille,
+            fichiers::conflits_collage,
             fichiers::coller,
             fichiers::annuler_collage,
             git::etat_git,

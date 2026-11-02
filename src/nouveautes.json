@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Coller un élément dont le nom est déjà pris ouvre une fenêtre pour comparer les deux (date, taille) et choisir : Remplacer, Garder les deux ou Ignorer, avec une case pour appliquer le même choix à tous les conflits.",
+      "Un élément remplacé part à la corbeille, et Annuler (Ctrl+Z) le remet en place."
+    ]
+  },
+  {
     "version": "0.8.3",
     "date": "2026-11-02",
     "points": [

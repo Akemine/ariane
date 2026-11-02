@@ -1076,22 +1076,28 @@ async function collerIci(i, destination = dossierCourant(i)) {
   const pp = etat.pressePapiers;
   if (!pp || !destination) return;
   if (pp.mode === 'couper') etat.pressePapiers = null; // un élément coupé ne se colle qu'une fois
-  await collerVers(pp.chemins, destination, pp.mode);
+  // Collage annulé depuis la fenêtre de conflit : on peut recoller
+  if (!(await collerVers(pp.chemins, destination, pp.mode))) etat.pressePapiers = pp;
 }
 
-/** Copie ou déplace des éléments. Le glisser-déposer passe aussi par ici (mode « couper »). */
+/** Copie ou déplace des éléments. Le glisser-déposer passe aussi par ici (mode « couper »).
+ *  Renvoie false si l'utilisateur a annulé depuis la fenêtre de conflit. */
 async function collerVers(chemins, destination, mode) {
-  if (!chemins.length) return;
-  let r;
+  if (!chemins.length) return true;
+  let r, choix;
   try {
-    r = await api.coller(chemins, destination, mode);
+    choix = await choisirConflits(chemins, destination, mode);
+    if (!choix) return false;
+    r = await api.coller(chemins, destination, mode, choix);
   } catch (e) {
     erreur(e);
     rafraichirTout();
-    return;
+    return true;
   }
   if (mode === 'couper') deplacerReglages(r.operations);
   if (r.erreurs.length) notifier(r.erreurs.join('\n'), { erreur: true });
+  const ignores = Object.values(choix).filter((c) => c === 'ignorer').length;
+  if (!r.operations.length && ignores) notifier(`${pluriel(ignores, 'élément ignoré', 'éléments ignorés')} : rien n'a été collé.`);
   if (r.operations.length) {
     const cibles = r.operations.map((o) => o.cible);
     // Les éléments collés sont sélectionnés là où ils arrivent
@@ -1110,9 +1116,27 @@ async function collerVers(chemins, destination, mode) {
       rafraichirTout();
     };
     etat.annulation = annuler;
-    notifier(`${libelleElements(r.operations.map((o) => o.source))} ${verbe}${accord} vers « ${nomAffiche(destination)} »`, { annuler });
+    const remplaces = r.operations.filter((o) => choix[o.source] === 'remplacer').length;
+    const details = [remplaces && pluriel(remplaces, 'remplacé', 'remplacés'), ignores && pluriel(ignores, 'ignoré', 'ignorés')].filter(Boolean);
+    notifier(`${libelleElements(r.operations.map((o) => o.source))} ${verbe}${accord} vers « ${nomAffiche(destination)} »${details.length ? ` (${details.join(', ')})` : ''}`, { annuler });
   }
   rafraichirTout();
+  return true;
+}
+
+/** Demande quoi faire de chaque nom déjà pris dans `destination`.
+ *  Renvoie { source: 'remplacer' | 'garder' | 'ignorer' }, ou null si le collage est annulé. */
+async function choisirConflits(chemins, destination, mode) {
+  const conflits = await api.conflits(chemins, destination);
+  const choix = {};
+  let pourTous = null;
+  for (const [n, c] of conflits.entries()) {
+    const reponse = pourTous ? { choix: pourTous } : await demanderConflit(c, n, conflits.length, mode, destination);
+    if (!reponse) return null;
+    if (reponse.tous) pourTous = reponse.choix;
+    choix[c.source] = reponse.choix;
+  }
+  return choix;
 }
 
 /** Les tags, couleurs et épingles suivent les éléments déplacés ou renommés. */
@@ -1125,7 +1149,16 @@ function deplacerReglages(operations) {
     }
     return c;
   };
-  const corrigerCles = (objet) => Object.fromEntries(Object.entries(objet).map(([k, v]) => [corriger(k), v]));
+  // Un élément qui en remplace un autre apporte ses réglages ; sans réglages, il garde ceux de l'ancien
+  const corrigerCles = (objet) => {
+    const restes = {};
+    const deplaces = {};
+    for (const [k, v] of Object.entries(objet)) {
+      const c = corriger(k);
+      (c === k ? restes : deplaces)[c] = v;
+    }
+    return { ...restes, ...deplaces };
+  };
   config.tags = corrigerCles(config.tags);
   config.couleursDossiers = corrigerCles(config.couleursDossiers);
   for (const e of config.espaces) e.epingles = e.epingles.map((ep) => ({ ...ep, chemin: corriger(ep.chemin) }));
@@ -1970,8 +2003,75 @@ function supprimerTag(id) {
   notifier(`Tag « ${t.libelle} » supprimé`, { annuler });
 }
 
+// ———————————————————————————— Fenêtre « conflit de noms » ————————————————————————————
+
+/** Le nom de `c.source` est déjà pris : remplacer, garder les deux ou ignorer ?
+ *  Résout { choix, tous }, ou null si le collage est annulé (Échap). */
+function demanderConflit(c, rang, total, mode, destination) {
+  const restants = total - rang - 1;
+  const date = (ms) => (ms == null ? '—' : new Date(ms).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }));
+  const poids = (a) => (a.est_dossier ? (a.nb_elements >= 10000 ? '10 000+ éléments' : pluriel(a.nb_elements ?? 0, 'élément', 'éléments')) : taille(a.taille));
+  const { nouveau: n, existant: x } = c;
+  // Moins de 2 s d'écart : les disques FAT arrondissent les dates
+  const memeDate = n.modifie != null && x.modifie != null && Math.abs(n.modifie - x.modifie) < 2000;
+  const memePoids = n.est_dossier === x.est_dossier && (n.est_dossier ? n.nb_elements === x.nb_elements : n.taille === x.taille);
+  const plusRecent = memeDate ? null : (n.modifie ?? 0) > (x.modifie ?? 0) ? 'nouveau' : 'existant';
+  const plusGros = memePoids || n.est_dossier !== x.est_dossier ? null : (n.taille ?? n.nb_elements ?? 0) > (x.taille ?? x.nb_elements ?? 0) ? 'nouveau' : 'existant';
+  const carte = (qui, a, chemin, titre) => {
+    const e = { ...a, chemin, nom: c.nom, extension: a.est_dossier ? '' : extensionDe(c.nom) };
+    return `<div class="conflit-carte">
+      <div class="conflit-titre">${titre}</div>
+      <div class="conflit-element"><span class="conflit-icone">${icone(e)}</span><span class="conflit-nom" title="${esc(chemin)}">${esc(c.nom)}</span></div>
+      <dl>
+        <dt>Modifié</dt><dd>${date(a.modifie)}${plusRecent === qui ? ' <span class="conflit-badge">plus récent</span>' : ''}</dd>
+        <dt>${a.est_dossier ? 'Contenu' : 'Taille'}</dt><dd>${poids(a)}${plusGros === qui ? ` <span class="conflit-badge">${a.est_dossier ? 'plus rempli' : 'plus lourd'}</span>` : ''}</dd>
+      </dl>
+    </div>`;
+  };
+  const occupe = `${destination}${destination.endsWith(SEP) ? '' : SEP}${c.nom}`;
+  const verbe = mode === 'couper' ? 'déplacé' : 'copié';
+  return new Promise((resoudre) => {
+    $('#modale').innerHTML = `<div class="voile">
+      <div class="modale conflit" role="dialog" aria-modal="true" aria-labelledby="titre-conflit" aria-describedby="detail-conflit">
+        <h2 id="titre-conflit">« ${esc(c.nom)} » existe déjà</h2>
+        <p id="detail-conflit" class="conflit-detail">dans « ${esc(nomAffiche(destination))} »${total > 1 ? ` · conflit ${rang + 1} sur ${total}` : ''}</p>
+        <div class="conflit-comparaison">
+          ${carte('existant', x, occupe, 'Déjà là')}
+          ${carte('nouveau', n, c.source, `Nouveau, ${verbe}`)}
+        </div>
+        ${memeDate && memePoids ? '<p class="conflit-note">Même date et même taille : c’est sans doute le même fichier.</p>' : ''}
+        ${x.est_dossier ? '<p class="conflit-note">Remplacer met le dossier existant et tout son contenu à la corbeille.</p>' : ''}
+        ${restants ? `<label class="conflit-tous"><input type="checkbox"> Faire de même pour ${restants > 1 ? `les ${restants} conflits suivants` : 'le conflit suivant'}</label>` : ''}
+        <div class="actions">
+          <button type="button" class="bouton" data-r="ignorer">Ignorer</button>
+          <span class="pousse"></span>
+          <button type="button" class="bouton" data-r="remplacer">Remplacer</button>
+          <button type="button" class="bouton principal" data-r="garder">Garder les deux</button>
+        </div>
+        <p class="conflit-astuce">Échap pour annuler tout le collage</p>
+      </div></div>`;
+    quandFermeModale = () => resoudre(null);
+    $('#modale .modale').addEventListener('click', (ev) => {
+      const choix = ev.target.closest('[data-r]')?.dataset.r;
+      if (!choix) return;
+      const tous = !!$('#modale .conflit-tous input')?.checked;
+      quandFermeModale = null;
+      fermerModale();
+      resoudre({ choix, tous });
+    });
+    // Pas de fermeture en cliquant à côté : il faut choisir (ou Échap pour tout annuler)
+    $('#modale [data-r="garder"]').focus();
+  });
+}
+
+/** Appelé quand la fenêtre se ferme sans réponse (Échap, clic à côté). */
+let quandFermeModale = null;
+
 function fermerModale() {
   $('#modale').innerHTML = '';
+  const rappel = quandFermeModale;
+  quandFermeModale = null;
+  rappel?.();
 }
 
 // ———————————————————————————— Glisser-déposer ————————————————————————————
