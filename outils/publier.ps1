@@ -15,11 +15,35 @@ if (-not $cle) { throw "Clé de signature introuvable dans $HOME\.tauri\ : sans 
 Configurer-MisesAJour $origine.Compte $origine.Depot $cle
 
 function Remplacer($fichier, $motif, $par) {
-    Ecrire $fichier ([regex]::Replace((Lire $fichier), $motif, $par, 1))
+    # Première occurrence seulement
+    Ecrire $fichier (([regex]$motif).Replace((Lire $fichier), $par, 1))
 }
 Remplacer "package.json" '"version":\s*"[^"]*"' "`"version`": `"$Version`""
 Remplacer "src-tauri\tauri.conf.json" '"version":\s*"[^"]*"' "`"version`": `"$Version`""
 Remplacer "src-tauri\Cargo.toml" '(?m)^version = "[^"]*"' "version = `"$Version`""
+
+# Notes de version : l'entrée « prochaine » de src\nouveautes.json reçoit ce numéro et la date du jour.
+# S'il n'y en a pas, on demande les nouveautés ici (une par ligne, ligne vide pour finir).
+$fichierNotes = "src\nouveautes.json"
+$notes = Lire $fichierNotes
+$aujourdhui = Get-Date -Format "yyyy-MM-dd"
+if ($notes -match ('"version":\s*"' + [regex]::Escape($Version) + '"')) {
+    Write-Host "Notes de la version $Version déjà présentes."
+} elseif ($notes -match '"version":\s*"prochaine"') {
+    $notes = ([regex]'"version":\s*"prochaine",\s*"date":\s*"[^"]*"').Replace($notes, "`"version`": `"$Version`",`n    `"date`": `"$aujourdhui`"", 1)
+    Ecrire $fichierNotes $notes
+    Write-Host "Notes de la version $Version datées du $aujourdhui."
+} else {
+    Write-Host "Quoi de neuf dans la $Version ? Une nouveauté par ligne, ligne vide pour terminer." -ForegroundColor Cyan
+    $points = @()
+    while ($true) { $ligne = Read-Host "  -"; if (-not $ligne) { break }; $points += $ligne }
+    if ($points.Count -gt 0) {
+        $echappe = $points | ForEach-Object { '      "' + ($_ -replace '\\', '\\' -replace '"', '\"') + '"' }
+        $entree = "  {`n    `"version`": `"$Version`",`n    `"date`": `"$aujourdhui`",`n    `"points`": [`n" + ($echappe -join ",`n") + "`n    ]`n  },"
+        $notes = $notes.Substring(0, $notes.IndexOf('[') + 1) + "`n" + $entree + $notes.Substring($notes.IndexOf('[') + 1)
+        Ecrire $fichierNotes $notes
+    }
+}
 
 Etape "Publication de la version $Version"
 git add -A

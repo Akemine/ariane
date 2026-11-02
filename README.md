@@ -88,6 +88,8 @@ Pour chaque nouvelle version :
 powershell -ExecutionPolicy Bypass -File .\outils\publier.ps1 0.8.0
 ```
 
+Les nouveautés de chaque version s'écrivent dans `src/nouveautes.json`, dans l'entrée « prochaine ». `publier.ps1` lui donne le numéro et la date ; s'il n'y en a pas, il demande les nouveautés au moment de publier. Elles s'affichent dans Ariane après la mise à jour, et sur la page de version GitHub.
+
 Les applications installées vérifient au démarrage s'il existe une version plus récente et proposent « Mettre à jour » (notification et bouton en bas de la barre latérale). Sous Linux, la mise à jour automatique ne concerne que la version AppImage.
 
 ## Raccourcis

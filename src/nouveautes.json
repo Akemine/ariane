@@ -1,0 +1,14 @@
+[
+  {
+    "version": "0.8.3",
+    "date": "2026-11-02",
+    "points": [
+      "Nouvelles icônes de fichiers : un dessin et une couleur par type (images, vidéos, PDF, archives, code…) pour tout reconnaître d’un coup d’œil.",
+      "Téléchargements rangés par date (Aujourd’hui, Hier, La semaine dernière…), les plus récents en premier. Disponible sur n’importe quel dossier : clic droit › Regrouper par date.",
+      "Mode clair / sombre, à basculer en bas de la barre latérale.",
+      "Clic droit selon le type : extraire un .zip, compresser, dupliquer, calculer la taille d’un dossier, copier le contenu d’un texte.",
+      "Bouton ⟳ pour chercher une mise à jour à tout moment.",
+      "Cette fenêtre, qui présente les nouveautés après chaque mise à jour. Cliquez sur le numéro de version pour la revoir."
+    ]
+  }
+]

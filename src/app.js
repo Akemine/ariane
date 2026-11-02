@@ -975,7 +975,7 @@ function renderBarre() {
     ? ''
     : `<button class="icone-btn mini verif-maj${etat.verificationEnCours ? ' tourne' : ''}${etat.majAJour ? ' ok' : ''}" data-action="verifier-maj"
         aria-label="Rechercher une mise à jour" title="Rechercher une mise à jour">${ic(etat.majAJour ? 'coche' : 'actualiser', 15)}</button>`;
-  const blocVersion = `${boutonMaj}<div class="ligne-version"><span class="version">${etat.version ? `Ariane ${esc(etat.version)}` : 'Ariane'}</span>${boutonTheme}${boutonVerif}</div>`;
+  const blocVersion = `${boutonMaj}<div class="ligne-version"><button class="version" data-action="nouveautes" title="Voir les nouveautés">${etat.version ? `Ariane ${esc(etat.version)}` : 'Ariane'}</button>${boutonTheme}${boutonVerif}</div>`;
   $('#barre-pied').innerHTML = `
     ${blocVersion}
     <button class="epingle" data-action="diviser">${ic('diviser', 18)}<span>${config.deuxPanneaux ? 'Un seul panneau' : 'Deux panneaux'}</span></button>
@@ -1734,6 +1734,70 @@ async function installerMiseAJour() {
   }
 }
 
+// ———————————————————————————— Nouveautés de la version ————————————————————————————
+
+/** -1, 0 ou 1 : « 0.8.10 » est bien plus récent que « 0.8.9 ». */
+function comparerVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let k = 0; k < Math.max(pa.length, pb.length); k++) {
+    const d = (pa[k] || 0) - (pb[k] || 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+}
+
+async function chargerNouveautes() {
+  try {
+    const liste = await (await fetch('nouveautes.json')).json();
+    return liste.filter((n) => n.version !== 'prochaine').sort((a, b) => comparerVersions(b.version, a.version));
+  } catch {
+    return [];
+  }
+}
+
+/** Après une mise à jour, montre une seule fois ce qui a changé depuis la version précédente. */
+async function nouveautesApresMiseAJour() {
+  const actuelle = etat.version;
+  const vue = config.derniereVersionVue ?? (etat.reglagesExistants ? '0.0.0' : null);
+  if (config.derniereVersionVue !== actuelle) {
+    config.derniereVersionVue = actuelle;
+    sauver();
+  }
+  if (!vue || comparerVersions(actuelle, vue) <= 0) return; // première installation, ou rien de neuf
+  const notes = (await chargerNouveautes()).filter((n) => comparerVersions(n.version, vue) > 0 && comparerVersions(n.version, actuelle) <= 0);
+  if (notes.length) ouvrirNouveautes(notes, true);
+}
+
+/** Fenêtre « Quoi de neuf ». Sans liste : tout l'historique. */
+async function ouvrirNouveautes(notes = null, apresMiseAJour = false) {
+  const liste = notes ?? (await chargerNouveautes());
+  const date = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+  const blocs = liste.length
+    ? liste
+        .map(
+          (n) => `<section class="note-version">
+            <h3>Version ${esc(n.version)}${n.date ? `<span>${date(n.date)}</span>` : ''}</h3>
+            <ul>${n.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+          </section>`
+        )
+        .join('')
+    : '<p class="vide">Pas encore de notes de version.</p>';
+  $('#modale').innerHTML = `<div class="voile">
+    <div class="modale nouveautes" role="dialog" aria-modal="true" aria-labelledby="titre-nouveautes">
+      <h2 id="titre-nouveautes">${apresMiseAJour ? `Ariane est passée en version ${esc(etat.version)}` : 'Nouveautés d’Ariane'}</h2>
+      <div class="notes-defilement">${blocs}</div>
+      <div class="actions"><span class="pousse"></span><button type="button" class="bouton principal" data-r="fermer">${apresMiseAJour ? 'Super !' : 'Fermer'}</button></div>
+    </div></div>`;
+  const voile = $('#modale .voile');
+  voile.addEventListener('mousedown', (ev) => {
+    if (ev.target === voile) fermerModale();
+  });
+  $('#modale [data-r="fermer"]').addEventListener('click', fermerModale);
+  $('#modale [data-r="fermer"]').focus();
+  if (apresMiseAJour) celebrer($('#titre-nouveautes'));
+}
+
 // ———————————————————————————— Notifications ————————————————————————————
 
 function notifier(texte, { erreur: estErreur = false, annuler = null, libelle = 'Annuler' } = {}) {
@@ -2143,6 +2207,7 @@ function actionBarre(action, d) {
     case 'mettre-a-jour': return installerMiseAJour();
     case 'verifier-maj': return verifierMiseAJour({ manuel: true });
     case 'theme': return basculerModeSombre();
+    case 'nouveautes': return ouvrirNouveautes();
     case 'filtre-tag':
       etat.filtreTag = d.id && etat.filtreTag !== d.id ? d.id : null;
       renderBarre();
@@ -2469,6 +2534,7 @@ async function demarrer() {
   try {
     const brut = await api.lireConfig();
     config = brut ? completer(JSON.parse(brut)) : configParDefaut();
+    etat.reglagesExistants = !!brut;
   } catch {
     config = configParDefaut();
   }
@@ -2491,6 +2557,7 @@ async function demarrer() {
   api.version().then((v) => {
     etat.version = v;
     renderBarre();
+    nouveautesApresMiseAJour();
   }).catch(() => {});
   setTimeout(() => verifierMiseAJour(), 3000); // sans ralentir l'ouverture
 }

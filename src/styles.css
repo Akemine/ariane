@@ -150,7 +150,17 @@ button:disabled { opacity: .4; cursor: default; }
 .epingle .badge { width: 30px; height: 22px; font-size: 9px; flex: none; }
 .barre-pied { flex: none; display: flex; flex-direction: column; gap: 4px; }
 .ligne-version { display: flex; align-items: center; gap: 4px; padding: 0 4px 0 10px; }
-.version { font-size: 12px; color: var(--discret); flex: 1; }
+.version { flex: 1; border: 0; background: none; padding: 0; text-align: left; font-size: 12px; color: var(--discret); cursor: pointer; }
+.version:hover { color: var(--encre); text-decoration: underline; }
+
+/* Fenêtre des nouveautés */
+.modale.nouveautes { width: 520px; }
+.notes-defilement { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding-right: 4px; }
+.note-version h3 { margin: 0 0 8px; display: flex; align-items: baseline; gap: 10px; font-size: 15px; font-weight: 800; color: var(--encre); }
+.note-version h3 span { font-size: 12.5px; font-weight: 600; color: var(--discret); }
+.note-version ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.note-version li { font-size: 14px; line-height: 1.5; color: var(--texte-2); }
+.note-version li::marker { color: var(--espace); }
 .verif-maj.tourne svg { animation: tourner .8s linear infinite; }
 .verif-maj.ok { color: #16A34A; }
 @keyframes tourner { to { transform: rotate(360deg); } }

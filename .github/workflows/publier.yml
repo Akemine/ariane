@@ -42,6 +42,18 @@ jobs:
 
       - run: npm install
 
+      # Les nouveautés de cette version (src/nouveautes.json) deviennent le texte de la page de version
+      - name: Notes de version
+        id: notes
+        shell: bash
+        run: |
+          node -e '
+            const version = process.argv[1].replace(/^v/, "");
+            const n = require("./src/nouveautes.json").find((x) => x.version === version);
+            const texte = n ? n.points.map((p) => "- " + p).join("\n") : "";
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, "texte<<FIN_NOTES\n" + texte + "\nFIN_NOTES\n");
+          ' "${GITHUB_REF_NAME}"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,6 +63,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Ariane ${{ github.ref_name }}'
           releaseBody: |
+            ${{ steps.notes.outputs.texte }}
+
             Windows : téléchargez et lancez le fichier qui se termine par `-setup.exe`.
             Linux : le fichier `.AppImage` (mises à jour automatiques) ou le `.rpm` pour Fedora.
             Si Ariane est déjà installée, elle propose elle-même la mise à jour.
