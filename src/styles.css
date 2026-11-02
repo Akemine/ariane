@@ -348,7 +348,8 @@ button:disabled { opacity: .4; cursor: default; }
 .c-nom { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .c-nom .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .ligne.cache .nom { color: var(--texte-3); }
-.ic-dossier { flex: none; }
+.ic-dossier, .ic-fichier { flex: none; }
+.ic-fichier { margin: 0 4px 0 2px; }
 .badge {
   width: 34px; height: 24px; flex: none; border-radius: 7px; display: grid; place-items: center;
   font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .02em;

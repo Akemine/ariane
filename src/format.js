@@ -64,27 +64,31 @@ export function dateComplete(ms) {
   return new Date(ms).toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' });
 }
 
-// Familles de fichiers : chaque famille a sa couleur, pour se repérer d'un coup d'œil.
+// Familles de fichiers : chaque famille a son dessin et sa couleur, pour se repérer d'un coup d'œil.
 const FAMILLES = [
-  { ext: 'js ts jsx tsx mjs cjs py rs go java c cpp h hpp cs php rb sh bash zsh fish lua kt swift dart vue svelte', fond: '#FEF3C7', texte: '#92400E' },
-  { ext: 'html htm css scss sass less', fond: '#FFE4E6', texte: '#9F1239' },
-  { ext: 'json yaml yml toml xml csv tsv ini conf cfg env lock sql', fond: '#E0E7FF', texte: '#3730A3' },
-  { ext: 'md txt rtf log', fond: '#CCFBF1', texte: '#115E59' },
-  { ext: 'pdf', fond: '#FEE2E2', texte: '#991B1B' },
-  { ext: 'doc docx odt', fond: '#DBEAFE', texte: '#1E40AF' },
-  { ext: 'xls xlsx ods', fond: '#DCFCE7', texte: '#166534' },
-  { ext: 'ppt pptx odp key', fond: '#FFEDD5', texte: '#9A3412' },
-  { ext: 'png jpg jpeg gif webp svg bmp ico heic heif avif tif tiff raw', fond: '#FCE7F3', texte: '#9D174D' },
-  { ext: 'mp4 mkv webm avi mov m4v wmv', fond: '#EDE9FE', texte: '#5B21B6' },
-  { ext: 'mp3 flac ogg wav m4a opus aac', fond: '#E0F2FE', texte: '#075985' },
-  { ext: 'zip tar gz tgz xz 7z rar bz2 zst', fond: '#EDE7DF', texte: '#57452F' },
-  { ext: 'iso img rpm deb appimage flatpakref exe msi dmg', fond: '#E7E5E4', texte: '#44403C' },
+  { famille: 'pdf', ext: 'pdf', vive: '#DC2626', fond: '#FEF2F2' },
+  { famille: 'image', ext: 'png jpg jpeg gif webp svg bmp ico heic heif avif tif tiff raw psd', vive: '#DB2777', fond: '#FDF2F8' },
+  { famille: 'video', ext: 'mp4 mkv webm avi mov m4v wmv flv', vive: '#7C3AED', fond: '#F5F3FF' },
+  { famille: 'audio', ext: 'mp3 flac ogg wav m4a opus aac wma', vive: '#0284C7', fond: '#F0F9FF' },
+  { famille: 'archive', ext: 'zip tar gz tgz xz 7z rar bz2 zst', vive: '#B45309', fond: '#FFFBEB' },
+  { famille: 'disque', ext: 'iso img dmg vhd vhdx', vive: '#475569', fond: '#F1F5F9' },
+  { famille: 'executable', ext: 'exe msi appimage rpm deb flatpakref apk', vive: '#1D4ED8', fond: '#EFF6FF' },
+  { famille: 'doc', ext: 'doc docx odt rtf pages', vive: '#2563EB', fond: '#EFF6FF' },
+  { famille: 'tableur', ext: 'xls xlsx ods numbers', vive: '#16A34A', fond: '#F0FDF4' },
+  { famille: 'presentation', ext: 'ppt pptx odp key', vive: '#EA580C', fond: '#FFF7ED' },
+  { famille: 'web', ext: 'html htm url webloc', vive: '#E11D48', fond: '#FFF1F2' },
+  { famille: 'code', ext: 'js ts jsx tsx mjs cjs py rs go java c cpp h hpp cs php rb lua kt swift dart vue svelte css scss sass less sql', vive: '#D97706', fond: '#FFFBEB' },
+  { famille: 'script', ext: 'sh bash zsh fish ps1 bat cmd', vive: '#334155', fond: '#F1F5F9' },
+  { famille: 'donnees', ext: 'json jsonc yaml yml toml xml csv tsv', vive: '#4F46E5', fond: '#EEF2FF' },
+  { famille: 'config', ext: 'ini conf cfg env lock gitignore editorconfig properties', vive: '#6B7280', fond: '#F3F4F6' },
+  { famille: 'texte', ext: 'txt md markdown log nfo', vive: '#0D9488', fond: '#F0FDFA' },
+  { famille: 'police', ext: 'ttf otf woff woff2', vive: '#9333EA', fond: '#FAF5FF' },
 ];
 const PAR_EXTENSION = new Map();
 for (const f of FAMILLES) for (const e of f.ext.split(' ')) PAR_EXTENSION.set(e, f);
+const DEFAUT = { famille: 'defaut', vive: '#9CA3AF', fond: '#F9FAFB' };
 
 export function typeFichier(extension) {
-  const famille = PAR_EXTENSION.get(extension) || { fond: '#F1F1F4', texte: '#3F3F46' };
-  const libelle = extension ? extension.toUpperCase().slice(0, 4) : 'FIC';
-  return { libelle, fond: famille.fond, texte: famille.texte };
+  const f = PAR_EXTENSION.get(extension) || DEFAUT;
+  return { famille: f.famille, vive: f.vive, fond: f.fond, libelle: extension ? extension.toUpperCase().slice(0, 4) : '' };
 }

@@ -3,7 +3,7 @@
 
 import { api } from './api.js';
 import { taille, elements, dateRelative, dateComplete, typeFichier, echapper as esc, normaliser, pluriel } from './format.js';
-import { ic, icDossier } from './icones.js';
+import { ic, icDossier, icFichier, icDossierSpecial } from './icones.js';
 
 // ———————————————————————————— Constantes ————————————————————————————
 
@@ -114,6 +114,13 @@ function estSous(chemin, parent) {
   const base = parent.endsWith(SEP) ? parent : parent + SEP;
   return chemin.startsWith(base);
 }
+/** Nom du dossier spécial (« telechargements », « images »…) ou null. */
+function dossierSpecial(chemin) {
+  const s = standards;
+  for (const cle of ['accueil', 'telechargements', 'documents', 'images', 'musique', 'videos', 'bureau']) if (s[cle] && s[cle] === chemin) return cle;
+  return null;
+}
+
 function couleurDossier(chemin, entree) {
   if (config.couleursDossiers[chemin]) return config.couleursDossiers[chemin];
   const s = standards;
@@ -700,10 +707,9 @@ function htmlEntete(i, avecGit) {
 }
 
 function icone(e) {
-  if (e.est_dossier) return icDossier(couleurDossier(e.chemin, e), 26, 22);
+  if (e.est_dossier) return icDossierSpecial(couleurDossier(e.chemin, e), dossierSpecial(e.chemin), 26, 22);
   // « .env », « .gitignore » : pas d'extension, on affiche le nom (ENV, GITI…)
-  const t = typeFichier(e.extension || (e.nom.startsWith('.') ? e.nom.slice(1).toLowerCase() : ''));
-  return `<span class="badge" aria-hidden="true" style="background:${t.fond};color:${t.texte}">${esc(t.libelle)}</span>`;
+  return icFichier(typeFichier(e.extension || (e.nom.startsWith('.') ? e.nom.slice(1).toLowerCase() : '')));
 }
 
 function pastilleGit(statut) {
@@ -802,8 +808,7 @@ function dossiersDeBase() {
 }
 
 function badgeFichier(nom, extension) {
-  const f = typeFichier(extension || (nom.startsWith('.') ? nom.slice(1).toLowerCase() : ''));
-  return `<span class="badge" aria-hidden="true" style="background:${f.fond};color:${f.texte}">${esc(f.libelle)}</span>`;
+  return icFichier(typeFichier(extension || (nom.startsWith('.') ? nom.slice(1).toLowerCase() : '')), 18, 21);
 }
 
 function extensionDe(chemin) {
@@ -1383,10 +1388,9 @@ function renderSuggestions() {
   const items = r.resultats
     .map((t, k) => {
       const icone = t.est_dossier
-        ? icDossier(couleurDossier(t.chemin), 26, 22)
+        ? icDossierSpecial(couleurDossier(t.chemin), dossierSpecial(t.chemin), 26, 22)
         : (() => {
-            const f = typeFichier(t.extension || (t.nom.startsWith('.') ? t.nom.slice(1).toLowerCase() : ''));
-            return `<span class="badge" aria-hidden="true" style="background:${f.fond};color:${f.texte}">${esc(f.libelle)}</span>`;
+            return icFichier(typeFichier(t.extension || (t.nom.startsWith('.') ? t.nom.slice(1).toLowerCase() : '')));
           })();
       return `<div class="sugg${k === r.index ? ' on' : ''}" role="option" aria-selected="${k === r.index}" data-k="${k}">
         ${icone}
