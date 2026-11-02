@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ariane</title>
+  <link rel="stylesheet" href="polices/polices.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <nav id="barre" class="barre" aria-label="Barre latérale">
+      <div class="recherche">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <label for="champ-recherche" class="sr">Chercher un fichier ou un dossier, ou aller à un chemin</label>
+        <input id="champ-recherche" type="text" placeholder="Chercher ou aller à…" autocomplete="off" spellcheck="false"
+          role="combobox" aria-expanded="false" aria-controls="suggestions" aria-autocomplete="list">
+        <div id="suggestions" class="suggestions" role="listbox" aria-label="Résultats de la recherche" hidden></div>
+      </div>
+      <div id="barre-contenu" class="barre-contenu"></div>
+      <div id="barre-pied" class="barre-pied"></div>
+    </nav>
+    <main id="panneaux" class="panneaux"></main>
+  </div>
+  <div id="calque-menu"></div>
+  <div id="notifications" class="notifications" aria-live="polite"></div>
+  <div id="modale"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
