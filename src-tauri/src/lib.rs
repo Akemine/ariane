@@ -6,6 +6,7 @@ mod fichiers;
 mod git;
 mod jeux;
 mod maj;
+mod peripheriques;
 mod recherche;
 mod systeme;
 
@@ -27,6 +28,9 @@ pub fn run() {
             jeux::detecter_jeux,
             jeux::icones_applications,
             maj::version_application,
+            peripheriques::lister_peripheriques,
+            peripheriques::monter_peripherique,
+            peripheriques::ejecter_peripherique,
             actions::extraire_archive,
             actions::compresser,
             actions::taille_dossier,

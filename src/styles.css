@@ -203,6 +203,21 @@ button:disabled { opacity: .4; cursor: default; }
 .epingle .chevron.ouvert { transform: rotate(90deg); }
 .epingle.jeu { height: 32px; padding-left: 38px; font-size: 13.5px; font-weight: 500; }
 
+/* Périphériques : nom, jauge d'espace occupé, bouton Éjecter */
+.ligne-peripherique { display: flex; align-items: center; gap: 2px; }
+.ligne-peripherique .epingle { flex: 1; min-width: 0; height: 44px; }
+.epingle .peripherique-texte { display: flex; flex-direction: column; gap: 5px; }
+.epingle .peripherique-texte > span { flex: none; }
+.epingle .peripherique-detail { font-size: 11.5px; font-weight: 500; color: var(--discret); }
+.jauge { display: block; height: 4px; border-radius: 99px; background: var(--trait); overflow: hidden; }
+.jauge i { display: block; height: 100%; border-radius: inherit; background: var(--espace); }
+.jauge.pleine i { background: #DC2626; }
+.ejecter { flex: none; margin-right: 4px; }
+.ejecter:hover { color: var(--encre); }
+.ejecter.en-cours { opacity: .5; cursor: progress; animation: clignoter 1s ease-in-out infinite; }
+@keyframes clignoter { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .ejecter.en-cours { animation: none; } }
+
 .titre-actions { display: flex; align-items: center; gap: 6px; }
 .icone-btn.mini { width: 26px; height: 26px; border-radius: 7px; color: var(--discret); }
 

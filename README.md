@@ -8,10 +8,11 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Deux panneaux côte à côte**, chacun avec ses onglets (bouton en bas de la barre latérale pour passer à un seul).
 - **Liste à colonnes configurables** : état Git, taille, date de modification, tags. Tri par nom, taille ou date.
 - **État Git** : branche, commits à pousser ou à récupérer, statut de chaque fichier (Modifié, Nouveau, Ignoré, Conflit). La colonne n'apparaît que dans un dépôt.
-- **Couper / copier / coller** (Ctrl+X, Ctrl+C, Ctrl+V) et **glisser-déposer** : déposer un élément le déplace (couper/coller), sur un autre panneau, un dossier, une épingle, une tuile de la barre ou un morceau du chemin.
+- **Couper / copier / coller** (Ctrl+X, Ctrl+C, Ctrl+V) et **glisser-déposer** : déposer un élément le déplace (couper/coller), sur un autre panneau, un dossier, une épingle, une tuile de la barre ou un morceau du chemin. D’un disque à un autre (vers une clé USB, depuis un disque externe), il est copié : les originaux restent.
 - **Conflits de noms** : quand le nom est déjà pris, une fenêtre compare les deux éléments (date, taille) et propose Remplacer, Garder les deux (« nom (2) ») ou Ignorer, avec une case pour appliquer le choix à tous. Échap annule le collage.
 - **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z), y compris les remplacements : l'élément remplacé, mis à la corbeille, revient à sa place.
-- **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), tags.
+- **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), périphériques, tags.
+- **Périphériques** : clés USB, disques externes, cartes SD et CD apparaissent dès qu'on les branche, avec leur espace libre. Un clic les ouvre (et les monte sous Linux), le bouton ⏏ les éjecte pour pouvoir les débrancher sans risque. Le disque du système n'y figure jamais.
 - **Jeux (Windows)** : Steam, Battle.net, Ubisoft Connect, Epic Games, EA app et GOG Galaxy sont détectés avec leur icône ; un clic ouvre le dossier du jeu (ou déplie la liste quand il y en a plusieurs), clic droit pour lancer le launcher.
 - **Recherche** depuis le champ en haut à gauche : dossier personnel, dossiers ouverts, épingles et dossiers des jeux.
 - **Tags de couleur personnalisables** (bouton + pour en créer, clic droit pour renommer, changer la couleur ou supprimer), filtrables depuis la barre latérale, et **couleur personnalisée par dossier**. Tags, couleurs et épingles suivent les éléments renommés ou déplacés.
@@ -139,6 +140,7 @@ src-tauri/            Backend Rust
   src/fichiers.rs     Lister, créer, renommer, copier, déplacer, corbeille
   src/git.rs          État Git (via la commande git)
   src/systeme.rs      Ouvrir un fichier, un terminal, VS Code
+  src/peripheriques.rs  Clés USB, disques externes : détecter, monter, éjecter
   src/config.rs       Lecture / écriture des réglages
   tauri.conf.json     Fenêtre, paquets rpm / deb / msi
 ```

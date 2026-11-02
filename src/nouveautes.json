@@ -1,5 +1,14 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Clés USB, disques externes, cartes SD et CD apparaissent dans la barre latérale dès qu’on les branche, avec une jauge d’espace occupé.",
+      "Un clic ouvre le périphérique (et le monte sous Linux) ; le bouton ⏏ l’éjecte pour le débrancher sans risque.",
+      "Glisser des fichiers vers une clé USB, ou depuis un disque externe, les copie au lieu de les déplacer : les originaux restent en place."
+    ]
+  },
+  {
     "version": "0.8.4",
     "date": "2026-11-03",
     "points": [

@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "ariane"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -71,6 +71,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-updater",
  "trash",
+ "windows-sys 0.61.2",
  "winreg 0.55.0",
  "zip 2.6.1",
 ]

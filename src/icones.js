@@ -42,6 +42,11 @@ const TRACES = {
   soleil: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   lune: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
   dossier: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  usb: '<rect x="7" y="9" width="10" height="12" rx="2"/><path d="M9 9V3h6v6"/><path d="M11 5.5v1M13 5.5v1"/>',
+  disqueExterne: '<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M7 14h5"/><path d="M16.5 14h.01"/>',
+  carte: '<path d="M8 3h7l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6z"/><path d="M10 6.5v3M13 6.5v3"/>',
+  cd: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>',
+  ejecter: '<path d="M12 5l7 8H5z"/><path d="M5 18.5h14"/>',
 };
 
 /** Icône au trait. `attributs` permet d'ajouter un style (couleur…). */

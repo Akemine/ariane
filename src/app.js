@@ -79,6 +79,9 @@ const etat = {
   colonnesOuvert: null,
   annulation: null, // dernière action annulable (Ctrl+Z)
   lanceurs: [], // launchers de jeux détectés (Windows)
+  peripheriques: [], // clés USB, disques externes, cartes SD, CD branchés
+  ejection: null, // id du périphérique en cours d'éjection
+  silenceRetraits: 0, // jusqu'à cette heure, pas de « Périphérique retiré » (on vient d'éjecter)
   iconesApps: {}, // chemin d'un .exe → image de son icône
   version: '', // version installée
   miseAJour: null, // { version, notes } quand une version plus récente est publiée
@@ -858,6 +861,135 @@ function htmlJeux() {
   return `<section aria-label="Jeux"><div class="titre-bloc"><span>Jeux</span></div>${lignes}</section>`;
 }
 
+// ———————————————————————————— Périphériques : clés USB, disques externes, cartes SD, CD ————————————————————————————
+
+const ICONE_PERIPHERIQUE = { usb: 'usb', disque: 'disqueExterne', carte: 'carte', optique: 'cd' };
+
+function htmlPeripheriques() {
+  if (!etat.peripheriques.length) return '';
+  const lignes = etat.peripheriques
+    .map((p) => {
+      const occupe = p.taille && p.libre != null ? Math.min(100, Math.round(((p.taille - p.libre) / p.taille) * 100)) : null;
+      const detail = occupe != null ? `${taille(p.libre)} libres sur ${taille(p.taille)}` : p.chemin ? '' : 'Pas encore ouvert';
+      const enCours = etat.ejection === p.id;
+      return `<div class="ligne-peripherique">
+        <button class="epingle peripherique" data-action="peripherique" data-id="${esc(p.id)}" data-peripherique="${esc(p.id)}" ${p.chemin ? `data-depot="${esc(p.chemin)}"` : ''}
+          title="${esc([p.chemin || p.id, detail].filter(Boolean).join(' · '))}">
+          ${ic(ICONE_PERIPHERIQUE[p.genre] || 'usb', 19)}
+          <span class="peripherique-texte"><span>${esc(p.nom)}</span>${
+            occupe != null
+              ? `<span class="jauge${occupe >= 90 ? ' pleine' : ''}" aria-label="${occupe} % utilisés"><i style="width:${occupe}%"></i></span>`
+              : detail ? `<span class="peripherique-detail">${detail}</span>` : ''
+          }</span>
+        </button>
+        <button class="icone-btn mini ejecter${enCours ? ' en-cours' : ''}" data-action="ejecter" data-id="${esc(p.id)}" ${enCours ? 'disabled' : ''}
+          aria-label="Éjecter ${esc(p.nom)}" title="${enCours ? 'Éjection…' : 'Éjecter'}">${ic('ejecter', 15)}</button>
+      </div>`;
+    })
+    .join('');
+  return `<section aria-label="Périphériques"><div class="titre-bloc"><span>Périphériques</span></div>${lignes}</section>`;
+}
+
+/** Le périphérique qui contient ce chemin (null : le disque de l'ordinateur). */
+function peripheriqueDe(chemin) {
+  return etat.peripheriques.find((p) => p.chemin && estSous(chemin, p.chemin)) || null;
+}
+
+let lecturePeripheriques = null;
+/** Relit la liste ; annonce les périphériques qu'on vient de brancher ou de retirer. */
+function suivrePeripheriques({ premiere = false } = {}) {
+  lecturePeripheriques ??= (async () => {
+    try {
+      const liste = await api.peripheriques();
+      // Pendant un glisser-déposer, la barre ne doit pas changer sous la souris : on verra au prochain tour
+      if (etat.glisse) return;
+      const avant = etat.peripheriques;
+      if (JSON.stringify(liste) === JSON.stringify(avant)) return;
+      etat.peripheriques = liste;
+      const anciens = new Set(avant.map((p) => p.id));
+      const restants = new Set(liste.map((p) => p.id));
+      const arrives = liste.filter((p) => !anciens.has(p.id));
+      const partis = avant.filter((p) => !restants.has(p.id));
+      // Arraché sans éjection, ou démonté par une autre appli : les onglets ouverts dessus reviennent à l'accueil
+      const montes = new Set(liste.map((p) => p.chemin).filter(Boolean));
+      avant.forEach((p) => p.chemin && !montes.has(p.chemin) && quitterPeripherique(p.chemin));
+      if (!premiere && arrives.length) {
+        const noms = arrives.map((p) => `« ${p.nom} »`).join(', ');
+        notifier(`${arrives.length > 1 ? 'Nouveaux périphériques' : 'Nouveau périphérique'} : ${noms}`, { annuler: () => ouvrirPeripherique(arrives[0].id), libelle: 'Ouvrir' });
+      }
+      if (!premiere && partis.length && Date.now() > etat.silenceRetraits) {
+        notifier(`${partis.length > 1 ? 'Périphériques retirés' : 'Périphérique retiré'} : ${partis.map((p) => `« ${p.nom} »`).join(', ')}`);
+      }
+      renderBarre();
+    } catch {
+      // Lecture impossible (lsblk absent…) : on réessaiera
+    } finally {
+      lecturePeripheriques = null;
+    }
+  })();
+  return lecturePeripheriques;
+}
+
+/** Les onglets ouverts sur un périphérique qui s'en va reviennent à l'accueil. */
+function quitterPeripherique(racine) {
+  etat.panneaux.forEach((p, i) => {
+    let courant = false;
+    p.onglets.forEach((o, k) => {
+      if (!estSous(o.chemin, racine)) return;
+      Object.assign(o, { chemin: standards.accueil, histo: [standards.accueil], pos: 0 });
+      if (k === p.ongletActif) courant = true;
+    });
+    if (courant) charger(i);
+  });
+}
+
+async function ouvrirPeripherique(id, { onglet = false } = {}) {
+  const p = etat.peripheriques.find((x) => x.id === id);
+  if (!p) return;
+  let chemin = p.chemin;
+  if (!chemin) {
+    // Linux : une partition pas encore montée
+    try {
+      chemin = await api.monterPeripherique(id);
+    } catch (e) {
+      return erreur(e);
+    }
+    await suivrePeripheriques();
+  }
+  return onglet ? nouvelOnglet(etat.actif, chemin) : naviguer(etat.actif, chemin);
+}
+
+async function ejecterPeripherique(id) {
+  const p = etat.peripheriques.find((x) => x.id === id);
+  if (!p || etat.ejection) return;
+  etat.ejection = id;
+  renderBarre();
+  // Ariane ne doit plus rien regarder dessus
+  if (p.chemin) quitterPeripherique(p.chemin);
+  try {
+    await api.ejecterPeripherique(id);
+    // Les autres partitions du même disque partent avec : pas de « retiré » en plus
+    etat.silenceRetraits = Date.now() + 4000;
+    notifier(`Vous pouvez débrancher « ${p.nom} » en toute sécurité.`);
+  } catch (e) {
+    erreur(e);
+  }
+  etat.ejection = null;
+  await suivrePeripheriques();
+  renderBarre();
+}
+
+function menuPeripherique(id, x, y) {
+  const p = etat.peripheriques.find((d) => d.id === id);
+  if (!p) return;
+  let html = `<div class="menu-titre">${esc(p.nom)}</div>`;
+  html += item('ouvrir-peripherique', 'dossier', 'Ouvrir');
+  html += item('onglet-peripherique', 'onglet', 'Ouvrir dans un nouvel onglet');
+  if (p.chemin) html += item('copier-chemin-peripherique', 'lien', 'Copier le chemin');
+  html += item('ejecter-peripherique', 'ejecter', 'Éjecter', { desactive: !!etat.ejection });
+  ouvrirMenu(x, y, html, { type: 'peripherique', id, chemin: p.chemin });
+}
+
 /** Un seul jeu : on va dans son dossier. Plusieurs : on déplie la liste. Aucun : dossier du launcher. */
 function cliquerLanceur(id) {
   const l = etat.lanceurs.find((x) => x.id === id);
@@ -924,6 +1056,7 @@ function renderBarre() {
     .map((f) => `<button class="epingle base" data-action="aller" data-chemin="${esc(f.chemin)}" data-depot="${esc(f.chemin)}" title="${esc(f.chemin)}">${ic(f.icone, 19, `style="color:${f.couleur}"`)}<span>${f.libelle}</span></button>`)
     .join('');
   const jeux = htmlJeux();
+  const peripheriques = htmlPeripheriques();
   const tags = listeTags()
     .map((t) => {
       const on = etat.filtreTag === t.id;
@@ -952,6 +1085,7 @@ function renderBarre() {
       <div class="titre-bloc"><span>Dossiers</span></div>
       ${base}
     </section>
+    ${peripheriques}
     ${jeux}
     <section aria-label="Tags">
       <div class="titre-bloc"><span>Tags</span>
@@ -1687,6 +1821,11 @@ function executerMenu(action, arg) {
     case 'dossier-lanceur': return naviguer(etat.actif, ctx.dossier);
     case 'onglet-lanceur': return nouvelOnglet(etat.actif, ctx.dossier);
     case 'copier-chemin-jeu': return copierTexte(ctx.dossier);
+    // Périphériques
+    case 'ouvrir-peripherique': return ouvrirPeripherique(ctx.id);
+    case 'onglet-peripherique': return ouvrirPeripherique(ctx.id, { onglet: true });
+    case 'copier-chemin-peripherique': return copierTexte(ctx.chemin);
+    case 'ejecter-peripherique': return ejecterPeripherique(ctx.id);
     // Tags
     case 'modifier-tag': return ouvrirModaleTag(ctx.tag);
     case 'supprimer-tag': return supprimerTag(ctx.tag);
@@ -2174,7 +2313,11 @@ function brancherGlisserDeposer() {
     ev.preventDefault();
     const destination = el.dataset.depot;
     finirGlisse();
-    collerVers(g.chemins, destination, 'couper');
+    // D'un disque à un autre (vers une clé USB, depuis un disque externe) on copie, comme Nautilus
+    // et l'Explorateur : les originaux restent. Sur un même disque, on déplace.
+    const disque = (c) => peripheriqueDe(c)?.id ?? null;
+    const memeDisque = g.chemins.every((c) => disque(c) === disque(destination));
+    collerVers(g.chemins, destination, memeDisque ? 'couper' : 'copier');
   });
   document.addEventListener('dragend', finirGlisse);
 }
@@ -2304,6 +2447,8 @@ function actionBarre(action, d) {
     case 'ouvrir-fichier': return essayer(api.ouvrir(d.chemin));
     case 'nouveau-tag': return ouvrirModaleTag();
     case 'lanceur': return cliquerLanceur(d.id);
+    case 'peripherique': return ouvrirPeripherique(d.id);
+    case 'ejecter': return ejecterPeripherique(d.id);
     case 'mettre-a-jour': return installerMiseAJour();
     case 'verifier-maj': return verifierMiseAJour({ manuel: true });
     case 'theme': return basculerModeSombre();
@@ -2493,6 +2638,8 @@ function brancherEvenements() {
     if (lanceur) return menuLanceur(lanceur.dataset.lanceur, ev.clientX, ev.clientY);
     const jeu = ev.target.closest('[data-jeu]');
     if (jeu) return menuJeu(jeu.dataset.jeu, ev.clientX, ev.clientY);
+    const peripherique = ev.target.closest('[data-peripherique]');
+    if (peripherique) return menuPeripherique(peripherique.dataset.peripherique, ev.clientX, ev.clientY);
   });
 
   // Recherche : filtre le panneau actif, propose des résultats dans tout le dossier
@@ -2654,6 +2801,11 @@ async function demarrer() {
   brancherEvenements();
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
   chargerJeux();
+  // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
+  suivrePeripheriques({ premiere: true });
+  setInterval(() => {
+    if (!document.hidden && !etat.ejection) suivrePeripheriques();
+  }, 2000);
   api.version().then((v) => {
     etat.version = v;
     renderBarre();
