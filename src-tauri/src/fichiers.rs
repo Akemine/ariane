@@ -93,7 +93,7 @@ fn developper(chemin: &str) -> PathBuf {
 }
 
 /// Message d'erreur lisible, en français.
-fn message(e: &io::Error, chemin: &Path) -> String {
+pub(crate) fn message(e: &io::Error, chemin: &Path) -> String {
     match e.kind() {
         io::ErrorKind::NotFound => format!("« {} » est introuvable.", texte(chemin)),
         io::ErrorKind::PermissionDenied => format!("Accès refusé à « {} ».", texte(chemin)),
@@ -103,7 +103,7 @@ fn message(e: &io::Error, chemin: &Path) -> String {
 }
 
 /// Lance un travail bloquant hors du fil principal.
-async fn en_tache<T, F>(travail: F) -> Result<T, String>
+pub(crate) async fn en_tache<T, F>(travail: F) -> Result<T, String>
 where
     F: FnOnce() -> Result<T, String> + Send + 'static,
     T: Send + 'static,
@@ -190,7 +190,7 @@ fn separer(nom: &str) -> (String, String) {
 }
 
 /// Trouve un nom libre : « photo (2).jpg », ou « photo (copie).jpg » dans le même dossier.
-fn nom_libre(dossier: &Path, nom: &str, est_dossier: bool, copie: bool) -> PathBuf {
+pub(crate) fn nom_libre(dossier: &Path, nom: &str, est_dossier: bool, copie: bool) -> PathBuf {
     let libre = |p: &Path| fs::symlink_metadata(p).is_err();
     let cible = dossier.join(nom);
     if libre(&cible) {

@@ -1,5 +1,6 @@
 //! Ariane — point d'entrée de l'application Tauri.
 
+mod actions;
 mod config;
 mod fichiers;
 mod git;
@@ -25,6 +26,12 @@ pub fn run() {
             jeux::detecter_jeux,
             jeux::icones_applications,
             maj::version_application,
+            actions::extraire_archive,
+            actions::compresser,
+            actions::taille_dossier,
+            actions::lire_texte,
+            actions::adresse_depot,
+            actions::executer_admin,
             maj::verifier_mise_a_jour,
             maj::installer_mise_a_jour,
             systeme::ouvrir,

@@ -1,6 +1,6 @@
 [package]
 name = "ariane"
-version = "0.8.0"
+version = "0.8.1"
 description = "Ariane, explorateur de fichiers coloré, avec espaces, tags et état Git"
 edition = "2021"
 rust-version = "1.85"
@@ -24,6 +24,10 @@ trash = "5"
 open = "5"
 # Mises à jour : vérifie, télécharge et installe les nouvelles versions signées
 tauri-plugin-updater = "2"
+# Archives : extraire et créer des .zip, extraire des .tar / .tar.gz
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
 
 [profile.release]
 codegen-units = 1

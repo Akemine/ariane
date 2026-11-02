@@ -14,6 +14,7 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Jeux (Windows)** : Steam, Battle.net, Ubisoft Connect, Epic Games, EA app et GOG Galaxy sont détectés avec leur icône ; un clic ouvre le dossier du jeu (ou déplie la liste quand il y en a plusieurs), clic droit pour lancer le launcher.
 - **Recherche** depuis le champ en haut à gauche : dossier personnel, dossiers ouverts, épingles et dossiers des jeux.
 - **Tags de couleur personnalisables** (bouton + pour en créer, clic droit pour renommer, changer la couleur ou supprimer), filtrables depuis la barre latérale, et **couleur personnalisée par dossier**. Tags, couleurs et épingles suivent les éléments renommés ou déplacés.
+- **Actions selon le type** au clic droit : extraire une archive (.zip, .tar, .tar.gz), compresser en .zip, dupliquer, calculer la taille d'un dossier, copier le contenu d'un fichier texte, exécuter en administrateur (Windows), ouvrir le dépôt Git dans le navigateur.
 - **Clic droit** sur un élément ou dans le vide pour tout faire : créer un dossier ou un fichier, renommer, corbeille, ouvrir un terminal ou VS Code, copier le chemin…
 - **Fichiers cachés** affichables (Ctrl+H), corbeille native du système.
 

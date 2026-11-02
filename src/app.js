@@ -83,6 +83,9 @@ const etat = {
   version: '', // version installée
   miseAJour: null, // { version, notes } quand une version plus récente est publiée
   installationEnCours: false,
+  verificationEnCours: false,
+  majAJour: false, // coche verte quelques secondes après une vérification sans nouveauté
+  majAnimee: false, // l'animation d'arrivée d'une mise à jour ne se joue qu'une fois
 };
 
 const $ = (s, racine = document) => racine.querySelector(s);
@@ -174,6 +177,8 @@ function configParDefaut() {
     afficherCaches: false,
     deuxPanneaux: true,
     jeuxDeplies: {},
+    groupesDate: {},
+    theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair',
   };
 }
 
@@ -187,6 +192,9 @@ function completer(lu) {
   if (!Array.isArray(c.listeTags)) c.listeTags = TAGS_PAR_DEFAUT.map((t) => ({ ...t }));
   c.couleursDossiers ??= {};
   c.jeuxDeplies ??= {};
+  c.groupesDate ??= {};
+  // Premier lancement : on suit le réglage clair/sombre du système
+  c.theme ??= matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair';
   c.tags ??= {};
   return c;
 }
@@ -212,10 +220,25 @@ function memoriserOnglets() {
 
 function appliquerTheme() {
   const c = couleursEspace();
-  const r = document.documentElement.style;
+  const racine = document.documentElement;
+  const r = racine.style;
+  const sombre = config.theme === 'sombre';
+  racine.dataset.theme = sombre ? 'sombre' : 'clair';
+  r.colorScheme = sombre ? 'dark' : 'light';
   r.setProperty('--espace', c.couleur);
-  r.setProperty('--encre', c.encre);
-  r.setProperty('--teinte', c.teinte);
+  // En sombre : fond teinté de la couleur de l'espace, et encre éclaircie pour rester lisible
+  r.setProperty('--encre', sombre ? `color-mix(in srgb, ${c.couleur} 45%, #FFFFFF)` : c.encre);
+  r.setProperty('--teinte', sombre ? `color-mix(in srgb, ${c.couleur} 18%, #110F18)` : c.teinte);
+}
+
+function basculerModeSombre() {
+  const racine = document.documentElement;
+  racine.classList.add('changement-theme');
+  config.theme = config.theme === 'sombre' ? 'clair' : 'sombre';
+  appliquerTheme();
+  renderBarre();
+  sauver();
+  setTimeout(() => racine.classList.remove('changement-theme'), 350);
 }
 
 // ———————————————————————————— Panneaux et navigation ————————————————————————————
@@ -452,6 +475,7 @@ function calculerVisibles(i) {
   }
   const { col, sens } = p.tri;
   const parNom = (a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true, sensitivity: 'base' });
+  if (estGroupeParDate(i)) return [...liste].sort((a, b) => (b.modifie ?? 0) - (a.modifie ?? 0) || parNom(a, b));
   return [...liste].sort((a, b) => {
     if (a.est_dossier !== b.est_dossier) return a.est_dossier ? -1 : 1; // dossiers d'abord
     let r = 0;
@@ -459,6 +483,47 @@ function calculerVisibles(i) {
     else if (col === 'modifie') r = (a.modifie ?? 0) - (b.modifie ?? 0);
     return (r || parNom(a, b)) * sens;
   });
+}
+
+// ——— Regroupement par date, comme dans l'Explorateur Windows ———
+
+function estGroupeParDate(i) {
+  const chemin = dossierCourant(i);
+  if (!chemin) return false;
+  return config.groupesDate[chemin] ?? chemin === standards.telechargements;
+}
+
+/** « Aujourd'hui », « Hier », « Plus tôt cette semaine »… puis l'année pour les plus anciens. */
+function groupeDate(ms) {
+  if (ms == null) return 'Date inconnue';
+  const maintenant = new Date();
+  const jour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate()).getTime();
+  const lundi = jour - ((new Date(jour).getDay() + 6) % 7) * 86400000;
+  const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1).getTime();
+  const debutMoisDernier = new Date(maintenant.getFullYear(), maintenant.getMonth() - 1, 1).getTime();
+  const debutAnnee = new Date(maintenant.getFullYear(), 0, 1).getTime();
+  if (ms >= jour) return 'Aujourd’hui';
+  if (ms >= jour - 86400000) return 'Hier';
+  if (ms >= lundi) return 'Plus tôt cette semaine';
+  if (ms >= lundi - 7 * 86400000) return 'La semaine dernière';
+  if (ms >= debutMois) return 'Plus tôt ce mois-ci';
+  if (ms >= debutMoisDernier) return 'Le mois dernier';
+  if (ms >= debutAnnee) return 'Plus tôt cette année';
+  return String(new Date(ms).getFullYear());
+}
+
+/** Range la liste triée en groupes ; les groupes repliés ne gardent que leur titre. */
+function grouper(i, liste) {
+  const p = panneau(i);
+  p.replies ??= new Set();
+  const groupes = [];
+  for (const e of liste) {
+    const libelle = groupeDate(e.modifie);
+    if (groupes.at(-1)?.libelle !== libelle) groupes.push({ libelle, entrees: [] });
+    groupes.at(-1).entrees.push(e);
+  }
+  p.groupes = groupes;
+  return groupes.flatMap((g) => (p.replies.has(g.libelle) ? [] : g.entrees));
 }
 
 function statutGit(p, e) {
@@ -502,6 +567,8 @@ function renderPanneau(i) {
   p.hautDePage = false;
 
   p.visibles = calculerVisibles(i);
+  if (estGroupeParDate(i)) p.visibles = grouper(i, p.visibles);
+  else p.groupes = null;
   const cols = config.colonnes;
   const avecGit = !!p.git && cols.git;
   // Largeurs des colonnes définies en CSS (--l-…), plus étroites quand le panneau l'est
@@ -617,9 +684,10 @@ function htmlColonnes(i) {
 function htmlEntete(i, avecGit) {
   const p = panneau(i);
   const cols = config.colonnes;
+  const groupe = estGroupeParDate(i);
   const tri = (col, libelle) => {
-    const actif = p.tri.col === col;
-    const fleche = actif ? (p.tri.sens === 1 ? ' ↑' : ' ↓') : '';
+    const actif = groupe ? col === 'modifie' : p.tri.col === col;
+    const fleche = actif ? (groupe || p.tri.sens === -1 ? ' ↓' : ' ↑') : '';
     return `<button class="tri${actif ? ' actif' : ''}" data-action="trier" data-col="${col}">${libelle}${fleche}</button>`;
   };
   return `<div class="entete" role="row">
@@ -664,8 +732,7 @@ function htmlCorps(i, avecGit) {
   }
   const cols = config.colonnes;
   const coupes = etat.pressePapiers?.mode === 'couper' ? new Set(etat.pressePapiers.chemins) : null;
-  return p.visibles
-    .map((e, idx) => {
+  const ligne = (e, idx) => {
       const classes = ['ligne'];
       if (p.selection.has(e.chemin)) classes.push('sel');
       if (coupes?.has(e.chemin)) classes.push('coupe');
@@ -682,6 +749,15 @@ function htmlCorps(i, avecGit) {
         ${cols.modifie ? `<span class="c-num" title="${esc(dateComplete(e.modifie))}">${dateRelative(e.modifie)}</span>` : ''}
         ${cols.tags ? `<span class="c-tags">${(config.tags[e.chemin] || []).map(pastilleTag).join('')}</span>` : ''}
       </div>`;
+  };
+  if (!p.groupes) return p.visibles.map(ligne).join('');
+  let idx = 0;
+  return p.groupes
+    .map((g) => {
+      const replie = p.replies.has(g.libelle);
+      const titre = `<button class="groupe${replie ? ' replie' : ''}" data-action="groupe" data-libelle="${esc(g.libelle)}" aria-expanded="${!replie}">
+        ${ic('avance', 14, 'class="chevron-groupe"')}<span>${esc(g.libelle)}</span><span class="groupe-compte">${g.entrees.length}</span></button>`;
+      return titre + (replie ? '' : g.entrees.map((e) => ligne(e, idx++)).join(''));
     })
     .join('');
 }
@@ -881,13 +957,20 @@ function renderBarre() {
     </section>
 `;
   // Toujours visibles en bas, même quand la liste du haut défile
+  const sombre = config.theme === 'sombre';
+  const boutonTheme = `<button class="icone-btn mini" data-action="theme" aria-label="${sombre ? 'Passer en mode clair' : 'Passer en mode sombre'}"
+    title="${sombre ? 'Mode clair' : 'Mode sombre'}">${ic(sombre ? 'soleil' : 'lune', 15)}</button>`;
   const m = etat.miseAJour;
-  const blocVersion = m
-    ? `<button class="bouton-maj" data-action="mettre-a-jour" ${etat.installationEnCours ? 'disabled' : ''} title="${esc(m.notes || '')}">
+  // Bouton de mise à jour (si disponible), puis la ligne version + mode sombre + vérification
+  const boutonMaj = m
+    ? `<button class="bouton-maj${etat.majAnimee ? '' : ' apparait'}" data-action="mettre-a-jour" ${etat.installationEnCours ? 'disabled' : ''} title="${esc(m.notes || '')}">
         ${ic('telecharger', 17)}<span>${etat.installationEnCours ? 'Installation…' : `Mettre à jour vers ${esc(m.version)}`}</span></button>`
-    : etat.version
-      ? `<div class="version">Ariane ${esc(etat.version)}</div>`
-      : '';
+    : '';
+  const boutonVerif = m
+    ? ''
+    : `<button class="icone-btn mini verif-maj${etat.verificationEnCours ? ' tourne' : ''}${etat.majAJour ? ' ok' : ''}" data-action="verifier-maj"
+        aria-label="Rechercher une mise à jour" title="Rechercher une mise à jour">${ic(etat.majAJour ? 'coche' : 'actualiser', 15)}</button>`;
+  const blocVersion = `${boutonMaj}<div class="ligne-version"><span class="version">${etat.version ? `Ariane ${esc(etat.version)}` : 'Ariane'}</span>${boutonTheme}${boutonVerif}</div>`;
   $('#barre-pied').innerHTML = `
     ${blocVersion}
     <button class="epingle" data-action="diviser">${ic('diviser', 18)}<span>${config.deuxPanneaux ? 'Un seul panneau' : 'Deux panneaux'}</span></button>
@@ -1152,7 +1235,58 @@ function epingler(elements) {
   notifier(`${nom} épinglé${liste.length > 1 ? 's' : ''} dans ${e.nom}`);
 }
 
-async function copierTexte(texte) {
+// ——— Actions selon le type ———
+
+/** Sélectionne des éléments créés, avec une notification annulable (mise à la corbeille). */
+function montrerCrees(i, crees, message) {
+  const p = panneau(i);
+  p.selection = new Set(crees);
+  p.ancre = crees[0];
+  p.reveler = crees[0];
+  const annuler = async () => {
+    await essayer(api.corbeille(crees));
+    rafraichirTout();
+  };
+  etat.annulation = annuler;
+  notifier(message, { annuler });
+  rafraichirTout();
+}
+
+async function extraire(i, e, mode) {
+  notifier(`Extraction de « ${e.nom} »…`);
+  const crees = await essayer(api.extraireArchive(e.chemin, mode));
+  if (!crees) return;
+  const ou = mode === 'dossier' ? `dans « ${nomDe(crees[0])} »` : 'ici';
+  montrerCrees(i, crees, `« ${e.nom} » extrait ${ou}`);
+}
+
+async function compresserSelection(i, chemins) {
+  const dossier = dossierCourant(i);
+  if (!dossier || !chemins.length) return;
+  notifier('Compression en cours…');
+  const zip = await essayer(api.compresser(chemins, dossier));
+  if (zip) montrerCrees(i, [zip], `« ${nomDe(zip)} » créé`);
+}
+
+async function calculerTaille(e) {
+  notifier(`Calcul de la taille de « ${e.nom} »…`);
+  const t = await essayer(api.tailleDossier(e.chemin));
+  if (!t) return;
+  notifier(`« ${e.nom} » : ${taille(t.octets)}, ${pluriel(t.fichiers, 'fichier', 'fichiers')} et ${pluriel(t.dossiers, 'dossier', 'dossiers')}`);
+}
+
+async function copierContenu(e) {
+  const texte = await essayer(api.lireTexte(e.chemin));
+  if (texte != null) copierTexte(texte, `Contenu de « ${e.nom} » copié`);
+}
+
+async function ouvrirDepot(i) {
+  const adresse = await api.adresseDepot(dossierCourant(i)).catch(() => null);
+  if (adresse) essayer(api.ouvrir(adresse));
+  else notifier('Ce dépôt n’a pas d’adresse en ligne (remote « origin »).', { erreur: true });
+}
+
+async function copierTexte(texte, message = 'Chemin copié') {
   try {
     await navigator.clipboard.writeText(texte);
   } catch {
@@ -1163,7 +1297,7 @@ async function copierTexte(texte) {
     document.execCommand('copy');
     zone.remove();
   }
-  notifier('Chemin copié');
+  notifier(message);
 }
 
 function viderRecherche() {
@@ -1340,6 +1474,22 @@ function fermerMenu() {
   $('#calque-menu').innerHTML = '';
 }
 
+const EXT_TEXTE = new Set(('txt md markdown json jsonc js mjs cjs ts tsx jsx css scss less html htm xml svg yml yaml toml ini cfg conf env csv tsv log '
+  + 'py rs go java kt c cpp h hpp cs php rb lua sh bash zsh fish ps1 bat cmd sql vue svelte gitignore editorconfig lock').split(' '));
+const EXT_EXECUTABLE = new Set(['exe', 'msi', 'bat', 'cmd']);
+
+function extension(e) {
+  return e.extension || (e.nom.startsWith('.') ? e.nom.slice(1).toLowerCase() : '');
+}
+function estArchive(e) {
+  const n = e.nom.toLowerCase();
+  return !e.est_dossier && (n.endsWith('.zip') || n.endsWith('.tar') || n.endsWith('.tar.gz') || n.endsWith('.tgz'));
+}
+function nomSansArchive(nom) {
+  return nom.replace(/\.(tar\.gz|tgz|tar|zip)$/i, '');
+}
+const sousWindows = () => SEP === '\\';
+
 function menuElements(i, x, y) {
   const liste = entreesSelectionnees(i);
   if (!liste.length) return;
@@ -1357,7 +1507,17 @@ function menuElements(i, x, y) {
   let html = `<div class="menu-titre">${esc(un ? un.nom : `${liste.length} éléments`)}</div>`;
   html += item('ouvrir', 'ouvrir', 'Ouvrir', { raccourci: 'Entrée' });
   if (un?.est_dossier) html += item('ouvrir-onglet', 'onglet', 'Ouvrir dans un nouvel onglet');
+  // Actions propres au type de l'élément
+  if (un && estArchive(un)) {
+    html += item('extraire-dossier', 'dossier', `Extraire dans « ${nomSansArchive(un.nom)} »`);
+    html += item('extraire-ici', 'telecharger', 'Extraire ici');
+  }
+  if (un && sousWindows() && EXT_EXECUTABLE.has(extension(un))) html += item('executer-admin', 'alerte', 'Exécuter en tant qu’administrateur');
+  if (un && !un.est_dossier && EXT_TEXTE.has(extension(un))) html += item('copier-contenu', 'document', 'Copier le contenu');
+  if (un?.est_dossier) html += item('calculer-taille', 'colonnes', 'Calculer la taille');
   html += SEPARATEUR;
+  html += item('compresser', 'dossierPlus', liste.length > 1 ? `Compresser les ${liste.length} éléments en .zip` : 'Compresser en .zip');
+  html += item('dupliquer', 'copier', 'Dupliquer');
   html += item('couper', 'couper', 'Couper', { raccourci: 'Ctrl+X' });
   html += item('copier', 'copier', 'Copier', { raccourci: 'Ctrl+C' });
   if (un?.est_dossier && etat.pressePapiers) html += item('coller-dans', 'coller', 'Coller dans ce dossier');
@@ -1394,11 +1554,13 @@ function menuFond(i, x, y) {
   html += SEPARATEUR;
   html += item('caches', 'oeil', 'Fichiers cachés', { coche: config.afficherCaches, raccourci: 'Ctrl+H' });
   html += item('colonnes', 'colonnes', 'Colonnes affichées…');
+  html += item('groupes-date', 'document', 'Regrouper par date', { coche: estGroupeParDate(i) });
   html += item('actualiser', 'actualiser', 'Actualiser', { raccourci: 'F5' });
   html += SEPARATEUR;
   html += item('terminal-ici', 'terminal', 'Ouvrir un terminal ici');
   html += item('vscode-ici', 'code', 'Ouvrir dans VS Code');
   html += item('epingler-ici', 'epingle', `Épingler dans ${espace().nom}`);
+  if (panneau(i).git) html += item('ouvrir-depot', 'branche', 'Ouvrir le dépôt dans le navigateur');
   html += SEPARATEUR;
   html += ligneCouleurs('couleur-ici', 'Couleur du dossier');
   ouvrirMenu(x, y, html, { type: 'fond', panneau: i, dossier });
@@ -1447,6 +1609,14 @@ function executerMenu(action, arg) {
     case 'tag': return basculerTag(chemins, arg);
     case 'couleur-elements': return colorerDossiers(chemins, arg);
     case 'renommer': return commencerRenommage(i);
+    case 'extraire-dossier': return un && extraire(i, un, 'dossier');
+    case 'extraire-ici': return un && extraire(i, un, 'ici');
+    case 'executer-admin': return un && essayer(api.executerAdmin(un.chemin));
+    case 'copier-contenu': return un && copierContenu(un);
+    case 'calculer-taille': return un && calculerTaille(un);
+    case 'compresser': return compresserSelection(i, chemins);
+    case 'dupliquer': return collerVers(chemins, dossierCourant(i), 'copier');
+    case 'ouvrir-depot': return ouvrirDepot(i);
     case 'corbeille': return mettreALaCorbeille(i);
     // Fond du dossier
     case 'nouveau-dossier': return creer(i, 'dossier', 'Nouveau dossier');
@@ -1457,6 +1627,10 @@ function executerMenu(action, arg) {
       etat.colonnesOuvert = i;
       return renderPanneau(i);
     case 'actualiser': return rafraichirTout();
+    case 'groupes-date':
+      config.groupesDate[ctx.dossier] = !estGroupeParDate(i);
+      sauver();
+      return renderPanneau(i);
     case 'terminal-ici': return essayer(api.terminal(ctx.dossier));
     case 'vscode-ici': return essayer(api.vscode(ctx.dossier));
     case 'epingler-ici': return epingler({ chemin: ctx.dossier, dossier: true });
@@ -1484,16 +1658,61 @@ function executerMenu(action, arg) {
 
 // ———————————————————————————— Mises à jour ————————————————————————————
 
-async function verifierMiseAJour() {
+async function verifierMiseAJour({ manuel = false } = {}) {
+  if (etat.verificationEnCours) return;
+  etat.verificationEnCours = true;
+  etat.majAJour = false;
+  renderBarre();
+  const debut = performance.now();
+  let echec = null;
   try {
     etat.version = await api.version();
     etat.miseAJour = await api.verifierMiseAJour();
-  } catch {
-    etat.miseAJour = null; // pas de connexion, ou mises à jour pas encore configurées
+  } catch (e) {
+    echec = e; // hors ligne, ou mises à jour pas encore configurées
+  }
+  // L'icône tourne au moins un instant : une réponse trop rapide passerait inaperçue
+  await new Promise((ok) => setTimeout(ok, Math.max(0, 600 - (performance.now() - debut))));
+  etat.verificationEnCours = false;
+
+  if (etat.miseAJour) {
+    renderBarre();
+    if (!etat.majAnimee) {
+      etat.majAnimee = true;
+      celebrer($('.bouton-maj'));
+      notifier(`La version ${etat.miseAJour.version} est disponible.`, { annuler: installerMiseAJour, libelle: 'Mettre à jour' });
+    }
+    return;
+  }
+  if (manuel && echec) erreur(`Impossible de vérifier les mises à jour : ${echec}`);
+  else if (manuel) {
+    etat.majAJour = true;
+    notifier(`Ariane est à jour (version ${etat.version}).`);
+    setTimeout(() => {
+      etat.majAJour = false;
+      renderBarre();
+    }, 2500);
   }
   renderBarre();
-  if (etat.miseAJour) {
-    notifier(`La version ${etat.miseAJour.version} est disponible.`, { annuler: installerMiseAJour, libelle: 'Mettre à jour' });
+}
+
+/** Petite gerbe de points colorés qui s'envolent du bouton. */
+function celebrer(element) {
+  if (!element || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = element.getBoundingClientRect();
+  const couleurs = ['#F97316', '#2563EB', '#6D28D9', '#16A34A', '#FBBF24', '#DB2777'];
+  for (let k = 0; k < 18; k++) {
+    const p = document.createElement('span');
+    p.className = 'particule';
+    const angle = (Math.PI * 2 * k) / 18 + Math.random() * 0.4;
+    const distance = 40 + Math.random() * 50;
+    p.style.left = `${r.left + r.width / 2}px`;
+    p.style.top = `${r.top + r.height / 2}px`;
+    p.style.background = couleurs[k % couleurs.length];
+    p.style.setProperty('--dx', `${Math.cos(angle) * distance}px`);
+    p.style.setProperty('--dy', `${Math.sin(angle) * distance - 20}px`);
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 900);
   }
 }
 
@@ -1887,7 +2106,17 @@ function actionPanneau(i, action, d) {
       config.colonnes[d.col] = !config.colonnes[d.col];
       sauver();
       return renderTous();
+    case 'groupe':
+      p.replies ??= new Set();
+      if (p.replies.has(d.libelle)) p.replies.delete(d.libelle);
+      else p.replies.add(d.libelle);
+      return renderPanneau(i);
     case 'trier':
+      if (estGroupeParDate(i)) {
+        config.groupesDate[dossierCourant(i)] = false;
+        sauver();
+        notifier('Regroupement par date désactivé pour ce dossier (clic droit dans le vide pour le remettre).');
+      }
       if (p.tri.col === d.col) p.tri.sens *= -1;
       else p.tri = { col: d.col, sens: d.col === 'nom' ? 1 : -1 };
       return renderPanneau(i);
@@ -1908,6 +2137,8 @@ function actionBarre(action, d) {
     case 'nouveau-tag': return ouvrirModaleTag();
     case 'lanceur': return cliquerLanceur(d.id);
     case 'mettre-a-jour': return installerMiseAJour();
+    case 'verifier-maj': return verifierMiseAJour({ manuel: true });
+    case 'theme': return basculerModeSombre();
     case 'filtre-tag':
       etat.filtreTag = d.id && etat.filtreTag !== d.id ? d.id : null;
       renderBarre();
@@ -2253,7 +2484,11 @@ async function demarrer() {
   brancherEvenements();
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
   chargerJeux();
-  setTimeout(verifierMiseAJour, 3000); // sans ralentir l'ouverture
+  api.version().then((v) => {
+    etat.version = v;
+    renderBarre();
+  }).catch(() => {});
+  setTimeout(() => verifierMiseAJour(), 3000); // sans ralentir l'ouverture
 }
 
 // Toute erreur inattendue s'affiche, au lieu d'échouer en silence
