@@ -1,0 +1,60 @@
+# Publie une version quand une étiquette « v… » est envoyée (git tag v0.8.0 && git push --tags) :
+# compile Windows et Linux, signe les fichiers, crée la page GitHub Releases et le latest.json
+# que l'application lit pour proposer la mise à jour.
+name: Publier une version
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publier:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - systeme: windows-latest
+            args: '--bundles nsis --config src-tauri/tauri.publication.json'
+          - systeme: ubuntu-22.04
+            args: '--bundles appimage,deb,rpm --config src-tauri/tauri.publication.json'
+    runs-on: ${{ matrix.systeme }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bibliothèques Linux
+        if: matrix.systeme == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Ariane ${{ github.ref_name }}'
+          releaseBody: |
+            Windows : téléchargez et lancez le fichier qui se termine par `-setup.exe`.
+            Linux : le fichier `.AppImage` (mises à jour automatiques) ou le `.rpm` pour Fedora.
+            Si Ariane est déjà installée, elle propose elle-même la mise à jour.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}

@@ -1,0 +1,151 @@
+# Ariane
+
+Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) et Windows 11, construit avec [Tauri 2](https://tauri.app) : backend en Rust, interface en HTML/CSS/JS sans framework ni étape de compilation.
+
+## Ce que fait la version 0.1
+
+- **Espaces** façon Arc : chaque espace a sa couleur, son icône, ses dossiers épinglés et ses propres onglets.
+- **Deux panneaux côte à côte**, chacun avec ses onglets (bouton en bas de la barre latérale pour passer à un seul).
+- **Liste à colonnes configurables** : état Git, taille, date de modification, tags. Tri par nom, taille ou date.
+- **État Git** : branche, commits à pousser ou à récupérer, statut de chaque fichier (Modifié, Nouveau, Ignoré, Conflit). La colonne n'apparaît que dans un dépôt.
+- **Couper / copier / coller** (Ctrl+X, Ctrl+C, Ctrl+V) et **glisser-déposer** : déposer un élément le déplace (couper/coller), sur un autre panneau, un dossier, une épingle, une tuile de la barre ou un morceau du chemin.
+- **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z).
+- **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), tags.
+- **Jeux (Windows)** : Steam, Battle.net, Ubisoft Connect, Epic Games, EA app et GOG Galaxy sont détectés avec leur icône ; un clic ouvre le dossier du jeu (ou déplie la liste quand il y en a plusieurs), clic droit pour lancer le launcher.
+- **Recherche** depuis le champ en haut à gauche : dossier personnel, dossiers ouverts, épingles et dossiers des jeux.
+- **Tags de couleur personnalisables** (bouton + pour en créer, clic droit pour renommer, changer la couleur ou supprimer), filtrables depuis la barre latérale, et **couleur personnalisée par dossier**. Tags, couleurs et épingles suivent les éléments renommés ou déplacés.
+- **Clic droit** sur un élément ou dans le vide pour tout faire : créer un dossier ou un fichier, renommer, corbeille, ouvrir un terminal ou VS Code, copier le chemin…
+- **Fichiers cachés** affichables (Ctrl+H), corbeille native du système.
+
+## Lancer en développement
+
+### Fedora 41 / 42
+
+```bash
+# Bibliothèques nécessaires à Tauri
+sudo dnf check-update
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file \
+  libappindicator-gtk3-devel librsvg2-devel libxdo-devel
+sudo dnf group install "c-development"
+
+# Rust (via rustup) et Node.js
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+sudo dnf install nodejs
+
+# Dans le dossier du projet
+npm install
+npm run dev
+```
+
+La première compilation prend quelques minutes, les suivantes sont rapides. Les modifications de `src/` (HTML, CSS, JS) se rechargent toutes seules ; celles de `src-tauri/` (Rust) relancent l'application.
+
+### Windows 11
+
+1. Installer les « Outils de génération Visual Studio » avec la charge de travail **Développement Desktop en C++**.
+2. Installer Rust avec [rustup](https://rustup.rs) et Node.js LTS.
+3. WebView2 est déjà présent sur Windows 11.
+4. Installer [Git pour Windows](https://git-scm.com) pour avoir la colonne Git.
+5. Dans le dossier du projet : `npm install` puis `npm run dev`.
+
+## Construire l'application
+
+```bash
+npm run build
+```
+
+Les paquets sont dans `src-tauri/target/release/bundle/` :
+
+- Fedora : `rpm/Ariane-0.8.0-1.x86_64.rpm`, à installer avec `sudo dnf install ./Ariane-0.8.0-1.x86_64.rpm`
+- Windows : un installateur `.msi` et un `setup.exe`
+
+### En faire le gestionnaire de fichiers par défaut (Linux)
+
+Une fois le paquet installé, repérez le nom de son raccourci puis déclarez-le pour les dossiers :
+
+```bash
+ls /usr/share/applications | grep -i ariane
+xdg-mime default <nom-du-fichier>.desktop inode/directory
+```
+
+Pour revenir à Nautilus : `xdg-mime default org.gnome.Nautilus.desktop inode/directory`.
+
+L'application accepte un dossier en argument (`ariane ~/Projets`), qu'elle ouvre dans un nouvel onglet.
+
+## Publier sur GitHub, avec mises à jour automatiques
+
+Une fois, depuis le dossier du projet sous Windows :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\outils\premiere-publication.ps1
+```
+
+Le script installe Git et GitHub CLI si besoin, ouvre le navigateur pour se connecter à GitHub, crée la clé de signature (elle reste sur ce PC, dans `~\.tauri\`), crée le dépôt public `ariane`, y range la clé dans les secrets, envoie le code et lance la publication de la première version. GitHub compile ensuite Windows et Linux et publie tout sur la page *Releases* du dépôt (15 minutes environ).
+
+Pour chaque nouvelle version :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\outils\publier.ps1 0.8.0
+```
+
+Les applications installées vérifient au démarrage s'il existe une version plus récente et proposent « Mettre à jour » (notification et bouton en bas de la barre latérale). Sous Linux, la mise à jour automatique ne concerne que la version AppImage.
+
+## Raccourcis
+
+| Action | Souris | Clavier |
+|---|---|---|
+| Ouvrir | Double-clic | Entrée |
+| Ouvrir un dossier dans un onglet | Clic molette | |
+| Sélection multiple | Ctrl+clic, Maj+clic, ou tracer une zone depuis un endroit libre | Ctrl+A, Maj+↑/↓ |
+| Couper / copier / coller | Clic droit, ou glisser-déposer pour déplacer | Ctrl+X / Ctrl+C / Ctrl+V |
+| Annuler le dernier collage | Bouton « Annuler » de la notification | Ctrl+Z |
+| Renommer | Clic droit › Renommer | F2 |
+| Mettre à la corbeille | Clic droit | Suppr |
+| Nouveau dossier | Clic droit dans le vide | Ctrl+Maj+N |
+| Précédent / suivant | Boutons latéraux de la souris | Alt+← / Alt+→, Retour arrière |
+| Dossier parent | | Alt+↑ |
+| Fichiers cachés | Bouton « Cachés » | Ctrl+H |
+| Nouvel onglet / fermer l'onglet | Bouton + | Ctrl+T / Ctrl+W |
+| Onglet suivant | | Ctrl+Tab |
+| Modifier ou copier le chemin | Clic dans la barre du chemin | Ctrl+L |
+| Chercher | Champ en haut à gauche | Ctrl+F |
+| Actualiser | | F5 |
+
+Dans le champ de recherche, taper un chemin (`/etc`, `~/Projets`, `C:\Users`) puis Entrée y emmène directement.
+
+## Où sont les réglages ?
+
+Espaces, épingles, tags, couleurs et colonnes sont enregistrés dans un fichier JSON :
+
+- Linux : `~/.config/fr.ariane.desktop/config.json`
+- Windows : `%APPDATA%\fr.ariane.desktop\config.json`
+
+## Organisation du code
+
+```
+src/                  Interface (servie telle quelle, sans compilation)
+  index.html
+  styles.css          Couleurs de l'espace actif : --espace, --encre, --teinte
+  app.js              État, rendu, menus, glisser-déposer, raccourcis
+  api.js              Appels au backend Rust
+  format.js           Tailles, dates, couleurs par type de fichier
+  icones.js           Icônes SVG
+  polices/            Plus Jakarta Sans et JetBrains Mono (licence OFL), embarquées
+
+src-tauri/            Backend Rust
+  src/fichiers.rs     Lister, créer, renommer, copier, déplacer, corbeille
+  src/git.rs          État Git (via la commande git)
+  src/systeme.rs      Ouvrir un fichier, un terminal, VS Code
+  src/config.rs       Lecture / écriture des réglages
+  tauri.conf.json     Fenêtre, paquets rpm / deb / msi
+```
+
+Tests du backend : `cd src-tauri && cargo test`.
+
+## Limites connues de la v0.1
+
+- **Conflits de noms** : coller un fichier qui existe déjà crée « nom (2) » au lieu de proposer de remplacer.
+- **Presse-papiers interne** : un Ctrl+C dans Ariane ne se colle pas encore dans Nautilus ou l’Explorateur Windows, et inversement.
+- **Glisser-déposer avec les autres applications** (vers Firefox, VS Code…) pas encore géré.
+- **Pas de surveillance automatique** du disque : la liste s'actualise après chaque action, au retour dans la fenêtre et avec F5.
+- **Pas de barre de progression** pour les grosses copies (l'interface reste utilisable pendant la copie).
+- Le **tableau de bord**, la **vue d'analyse de l'espace disque** et un **thème sombre** sont les prochaines étapes.
