@@ -1,3 +1,7 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/
+
+# Clés de signature : elles restent dans ~/.tauri, jamais dans le dépôt
+*.key
+$HOME/

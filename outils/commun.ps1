@@ -14,6 +14,15 @@ function Verifier($message) { if ($LASTEXITCODE -ne 0) { throw $message } }
 function Ecrire($fichier, $texte) { [IO.File]::WriteAllText((Resolve-Path $fichier), $texte, $sansBom) }
 function Lire($fichier) { [IO.File]::ReadAllText((Resolve-Path $fichier)) }
 
+# Après « git add -A » : refuse d'envoyer une clé privée sur le dépôt public, même si le .gitignore a sauté
+function Verifier-SansCle {
+    $cles = git diff --cached --name-only --diff-filter=d | Where-Object { $_ -match '\.key$' }
+    if ($cles) {
+        git reset -q -- $cles
+        throw "Clé privée retirée de l'envoi ($($cles -join ', ')) : elle doit rester dans $HOME\.tauri\, hors du projet."
+    }
+}
+
 # Clé de signature : ariane.key, ou celle créée du temps où l'appli s'appelait Explorateur
 function Trouver-Cle {
     foreach ($nom in @("ariane.key", "explorateur.key")) {

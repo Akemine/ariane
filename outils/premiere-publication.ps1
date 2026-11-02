@@ -56,6 +56,7 @@ Configurer-MisesAJour $compte $Depot $cle
 Etape "Création du dépôt $compte/$Depot"
 if (-not (Test-Path ".git")) { git init -b main | Out-Null }
 git add -A
+Verifier-SansCle
 git commit -m "Ariane, première publication" 2>$null | Out-Null
 gh repo view "$compte/$Depot" 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {

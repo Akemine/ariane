@@ -47,6 +47,7 @@ if ($notes -match ('"version":\s*"' + [regex]::Escape($Version) + '"')) {
 
 Etape "Publication de la version $Version"
 git add -A
+Verifier-SansCle
 git commit -m "Version $Version"
 git tag -a "v$Version" -m "Version $Version"
 git push origin HEAD --follow-tags
