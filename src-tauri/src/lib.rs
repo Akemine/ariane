@@ -8,6 +8,7 @@ mod jeux;
 mod maj;
 mod peripheriques;
 mod recherche;
+mod reseau;
 mod systeme;
 
 pub fn run() {
@@ -32,6 +33,7 @@ pub fn run() {
             peripheriques::lister_peripheriques,
             peripheriques::monter_peripherique,
             peripheriques::ejecter_peripherique,
+            reseau::connecter_partage,
             actions::extraire_archive,
             actions::compresser,
             actions::taille_dossier,

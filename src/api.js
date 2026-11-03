@@ -19,6 +19,7 @@ export const api = {
   peripheriques: () => appeler('lister_peripheriques'),
   monterPeripherique: (id) => appeler('monter_peripherique', { id }),
   ejecterPeripherique: (id) => appeler('ejecter_peripherique', { id }),
+  connecterPartage: (chemin) => appeler('connecter_partage', { chemin }),
   verifierMiseAJour: () => appeler('verifier_mise_a_jour'),
   installerMiseAJour: () => appeler('installer_mise_a_jour'),
   extraireArchive: (chemin, mode) => appeler('extraire_archive', { chemin, mode }),

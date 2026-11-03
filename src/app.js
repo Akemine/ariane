@@ -121,6 +121,18 @@ function tagDeVue(chemin) {
 }
 
 /** Le contenu d'un dossier, ou celui d'une vue de tag (mêmes champs, plus `vueTag` et `introuvables`). */
+/** Un dossier réseau (\\serveur\partage) sans identifiants : Windows les demande dans sa
+ *  propre fenêtre, puis on réessaie. Seulement quand on y va, pas à chaque actualisation. */
+async function lireOuConnecter(chemin) {
+  try {
+    return await lire(chemin);
+  } catch (e) {
+    if (!String(e).startsWith('Connexion requise')) throw e;
+    await api.connecterPartage(chemin);
+    return lire(chemin);
+  }
+}
+
 async function lire(chemin) {
   const id = tagDeVue(chemin);
   if (!id) return api.lister(chemin);
@@ -506,7 +518,7 @@ async function naviguer(i, chemin, { histo = true } = {}) {
   const jeton = ++p.jeton;
   let c;
   try {
-    c = await lire(chemin);
+    c = await lireOuConnecter(chemin);
   } catch (e) {
     if (jeton === p.jeton) erreur(e);
     return false;
@@ -1028,6 +1040,9 @@ function extensionDe(chemin) {
 }
 
 function parentDe(chemin) {
+  // \\serveur\partage n'a pas de parent, et \\serveur\partage\dossier a « \\serveur\partage\ »
+  const partage = /^(\\\\[^\\]+\\[^\\]+)\\?(.*)$/.exec(chemin);
+  if (partage && !partage[2].includes('\\')) return partage[2] ? partage[1] + '\\' : chemin;
   const i = Math.max(chemin.lastIndexOf('/'), chemin.lastIndexOf('\\'));
   if (i <= 0) return SEP === '/' ? '/' : chemin;
   const parent = chemin.slice(0, i);
@@ -1691,7 +1706,7 @@ function viderRecherche() {
 const rechercheGlobale = { jeton: 0, minuterie: null, resultats: [], index: 0, ouvert: false, complet: true, requete: '', enCours: false };
 
 function estChemin(texte) {
-  return /^(\/|~|[a-zA-Z]:[\\/])/.test(texte);
+  return /^(\/|~|[a-zA-Z]:[\\/]|\\\\)/.test(texte);
 }
 
 function planifierRecherche(texte) {

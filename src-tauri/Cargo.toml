@@ -39,10 +39,11 @@ strip = true
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 base64 = "0.22"
-# Clés USB et disques externes : lecteurs, type de bus, éjection (déjà compilé pour Tauri)
+# Clés USB et disques externes (lecteurs, bus, éjection), connexion aux partages réseau
 windows-sys = { version = "0.61", features = [
   "Win32_Devices_DeviceAndDriverInstallation",
   "Win32_Foundation",
+  "Win32_NetworkManagement_WNet",
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_Diagnostics_Debug",

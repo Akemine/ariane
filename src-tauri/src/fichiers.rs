@@ -111,11 +111,18 @@ fn developper(chemin: &str) -> PathBuf {
     if let Some(reste) = chemin.strip_prefix("~/").or_else(|| chemin.strip_prefix("~\\")) {
         return accueil().join(reste);
     }
+    // « //serveur/partage » vaut « \\serveur\partage » : Windows n'accepte pas « / » dans un nom
+    if cfg!(windows) {
+        return PathBuf::from(chemin.replace('/', "\\"));
+    }
     PathBuf::from(chemin)
 }
 
 /// Message d'erreur lisible, en français.
 pub(crate) fn message(e: &io::Error, chemin: &Path) -> String {
+    if let Some(m) = crate::reseau::message(e, chemin) {
+        return m;
+    }
     match e.kind() {
         io::ErrorKind::NotFound => format!("« {} » est introuvable.", texte(chemin)),
         io::ErrorKind::PermissionDenied => format!("Accès refusé à « {} ».", texte(chemin)),
@@ -773,6 +780,13 @@ mod tests {
         assert_eq!(r.erreurs.len(), 1);
         assert!(interieur.exists());
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn fil_d_un_dossier_reseau() {
+        let noms: Vec<String> = segments(&developper("//srv/data/Bureaux_etudes")).into_iter().map(|s| s.nom).collect();
+        assert_eq!(noms, [r"\\srv\data", "Bureaux_etudes"]);
     }
 
     #[test]

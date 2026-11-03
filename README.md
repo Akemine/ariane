@@ -13,6 +13,7 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z), y compris les remplacements : l'élément remplacé, mis à la corbeille, revient à sa place.
 - **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), périphériques, tags.
 - **Périphériques** : clés USB, disques externes, cartes SD et CD apparaissent dès qu'on les branche, avec leur espace libre. Un clic les ouvre (et les monte sous Linux), le bouton ⏏ les éjecte pour pouvoir les débrancher sans risque. Le disque du système n'y figure jamais.
+- **Dossiers réseau (Windows)** : un chemin `\\serveur\partage\dossier` tapé dans la recherche ou la barre du chemin s'ouvre comme un dossier, et s'épingle. Si le serveur demande un identifiant, Windows affiche sa propre fenêtre de connexion (le mot de passe ne passe pas par Ariane).
 - **Jeux (Windows)** : Steam, Battle.net, Ubisoft Connect, Epic Games, EA app et GOG Galaxy sont détectés avec leur icône ; un clic ouvre le dossier du jeu (ou déplie la liste quand il y en a plusieurs), clic droit pour lancer le launcher.
 - **Recherche** depuis le champ en haut à gauche : dossier personnel, dossiers ouverts, épingles et dossiers des jeux.
 - **Tags de couleur personnalisables** (bouton + pour en créer, clic droit pour renommer, changer la couleur ou supprimer), et **couleur personnalisée par dossier**. Tags, couleurs et épingles suivent les éléments renommés ou déplacés.
@@ -94,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\outils\publier.ps1 0.8.0
 
 Les nouveautés de chaque version s'écrivent dans `src/nouveautes.json`, dans l'entrée « prochaine ». `publier.ps1` lui donne le numéro et la date ; s'il n'y en a pas, il demande les nouveautés au moment de publier. Elles s'affichent dans Ariane après la mise à jour, et sur la page de version GitHub.
 
-Les applications installées vérifient au démarrage s'il existe une version plus récente et proposent « Mettre à jour » (notification et bouton en bas de la barre latérale). Sous Linux, la mise à jour automatique ne concerne que la version AppImage.
+Les applications installées vérifient au démarrage s'il existe une version plus récente et proposent « Mettre à jour » (notification et bouton en bas de la barre latérale). Sous Linux, elle fonctionne pour l'AppImage, le .rpm et le .deb (ces deux-là demandent le mot de passe administrateur).
 
 ## Raccourcis
 
@@ -143,6 +144,7 @@ src-tauri/            Backend Rust
   src/git.rs          État Git (via la commande git)
   src/systeme.rs      Ouvrir un fichier, un terminal, VS Code
   src/peripheriques.rs  Clés USB, disques externes : détecter, monter, éjecter
+  src/reseau.rs       Dossiers réseau Windows : connexion, messages d'erreur
   src/config.rs       Lecture / écriture des réglages
   tauri.conf.json     Fenêtre, paquets rpm / deb / msi
 ```
