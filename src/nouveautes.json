@@ -1,7 +1,7 @@
 [
   {
-    "version": "prochaine",
-    "date": "",
+    "version": "0.8.7",
+    "date": "2026-11-03",
     "points": [
       "Dossiers réseau (Windows) : tapez un chemin comme \\\\serveur\\partage\\dossier dans le champ de recherche ou la barre du chemin (Ctrl+L) pour l’ouvrir.",
       "Si le serveur demande un identifiant, Windows affiche sa fenêtre de connexion, avec « Mémoriser » pour ne plus le saisir. Un serveur injoignable ou un partage inexistant est expliqué clairement."
