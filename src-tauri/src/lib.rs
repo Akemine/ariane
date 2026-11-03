@@ -8,6 +8,7 @@ mod gestionnaire;
 mod git;
 mod jeux;
 mod maj;
+mod menage;
 mod peripheriques;
 mod recherche;
 mod reseau;
@@ -48,6 +49,8 @@ pub fn run() {
             reseau::connecter_partage,
             apercu::lire_debut,
             apercu::lire_fichier,
+            menage::analyser_menage,
+            menage::ressortir_de_la_corbeille,
             surveillance::surveiller,
             actions::extraire_archive,
             actions::compresser,

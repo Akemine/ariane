@@ -548,7 +548,7 @@ body.redimension, body.redimension * { cursor: col-resize !important; -webkit-us
 /* ———————————— Aperçu rapide (Espace) ———————————— */
 
 #apercu[hidden] { display: none; }
-.apercu-voile { position: fixed; inset: 0; z-index: 250; background: rgba(28, 26, 38, .32); display: grid; place-items: center; animation: apercu-voile .12s ease-out; }
+.apercu-voile { position: fixed; inset: 0; z-index: 350; background: rgba(28, 26, 38, .32); display: grid; place-items: center; animation: apercu-voile .12s ease-out; }
 :root[data-theme="sombre"] .apercu-voile { background: rgba(0, 0, 0, .55); }
 .apercu-fenetre {
   width: min(1100px, calc(100vw - 64px)); height: calc(100vh - 64px);
@@ -582,3 +582,36 @@ body.redimension, body.redimension * { cursor: col-resize !important; -webkit-us
 .apercu-vide audio { width: min(420px, 80vw); }
 .apercu-note { margin: 0; padding: 10px 22px 18px; font-size: 12.5px; color: var(--discret); text-align: center; width: 100%; box-sizing: border-box; }
 .apercu-pied { padding: 8px 18px; border-top: 1px solid var(--trait); font-size: 12px; color: var(--muet); }
+
+/* ———————————— Ménage ———————————— */
+
+.modale.menage { width: 820px; max-height: calc(100vh - 64px); gap: 12px; }
+.modale.menage h2 { display: flex; align-items: center; gap: 10px; overflow-wrap: anywhere; }
+.modale.menage h2 svg { flex: none; color: var(--espace); }
+.menage-contenu { flex: 1 1 auto; min-height: 160px; overflow: auto; margin: 0 -22px; padding: 0 22px; display: flex; flex-direction: column; gap: 6px; }
+.menage-attente { margin: auto; padding: 32px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--texte-3); font-size: 14px; text-align: center; }
+.menage-attente svg { color: var(--espace); }
+.menage-roue { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--teinte); border-top-color: var(--espace); animation: tourner .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .menage-roue { animation-duration: 2.4s; } }
+.menage-resume { margin: 0; font-size: 14px; font-weight: 700; color: var(--texte-2); }
+.menage-bilan { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: #166534; }
+:root[data-theme="sombre"] .menage-bilan { color: #86EFAC; }
+.menage-note { margin: 0; font-size: 13px; color: var(--texte-3); }
+.menage-groupe { margin-top: 8px; }
+.menage-groupe h3 { margin: 0; display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--discret); }
+.menage-groupe h3 span { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muet); font-variant-numeric: tabular-nums; }
+.menage-aide { margin: 2px 0 6px; font-size: 12.5px; color: var(--muet); }
+.menage-groupe ul { margin: 0; padding: 0; list-style: none; }
+.menage-ligne { display: grid; grid-template-columns: auto minmax(0, 1fr) 76px 92px auto; align-items: center; gap: 12px; padding: 6px 8px; border-radius: 10px; outline: none; }
+.menage-ligne:hover { background: var(--survol); }
+.menage-ligne:focus-visible, .menage-ligne:focus { background: var(--teinte); box-shadow: inset 0 0 0 1.5px var(--espace); }
+:root[data-theme="sombre"] .menage-ligne:focus { background: var(--survol-menu); }
+.menage-icone { display: grid; place-items: center; }
+.menage-nom { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.menage-nom strong { font-size: 14px; font-weight: 600; color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menage-nom span { font-size: 12px; color: var(--discret); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menage-poids, .menage-age { font-size: 13px; color: var(--texte-3); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.menage-actions { display: flex; align-items: center; gap: 6px; }
+.bouton.petit { height: 30px; padding: 0 11px; border-radius: 8px; font-size: 13px; }
+:root[data-theme="sombre"] .bouton.danger { background: #4C1D1D; color: #FCA5A5; }
+.menage-astuce { font-size: 12px; color: var(--muet); }

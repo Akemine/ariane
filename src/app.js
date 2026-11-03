@@ -394,6 +394,8 @@ function completer(lu) {
   // Premier lancement : on suit le réglage clair/sombre du système
   c.theme ??= matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair';
   c.tags ??= {};
+  // Ménage : éléments pour lesquels on a répondu « Garder », plus jamais proposés
+  if (!Array.isArray(c.menageGardes)) c.menageGardes = [];
   return c;
 }
 
@@ -929,6 +931,7 @@ function htmlOutils(i) {
     ${puceGit}
     <button class="bascule${config.afficherCaches ? ' on' : ''}" data-action="caches" aria-pressed="${config.afficherCaches}" title="Fichiers cachés (Ctrl+H)">${ic('oeil', 17)}<span>Cachés</span></button>
     <button class="texte-btn" data-action="colonnes" aria-expanded="${etat.colonnesOuvert === i}" title="Choisir les colonnes">${ic('colonnes', 17)}<span>Colonnes</span></button>
+    <button class="icone-btn" data-action="menage" aria-label="Faire le ménage dans ce dossier" title="Faire le ménage dans ce dossier" ${dossierCourant(i) ? '' : 'disabled'}>${ic('balai')}</button>
     <button class="icone-btn" data-action="terminal-ici" aria-label="Ouvrir un terminal ici" title="Ouvrir un terminal ici" ${dossierCourant(i) ? '' : 'disabled'}>${ic('terminal')}</button>
     <button class="icone-btn" data-action="vscode-ici" aria-label="Ouvrir dans VS Code" title="Ouvrir dans VS Code" ${dossierCourant(i) ? '' : 'disabled'}>${ic('code')}</button>
   </div>`;
@@ -1565,6 +1568,7 @@ function deplacerReglages(operations) {
   };
   config.tags = corrigerCles(config.tags);
   config.couleursDossiers = corrigerCles(config.couleursDossiers);
+  config.menageGardes = config.menageGardes.map(corriger);
   for (const e of config.espaces) e.epingles = e.epingles.map((ep) => ({ ...ep, chemin: corriger(ep.chemin) }));
   for (const p of etat.panneaux)
     for (const o of p.onglets) {
@@ -1999,6 +2003,7 @@ function menuFond(i, x, y) {
   html += item('colonnes', 'colonnes', 'Colonnes affichées…');
   html += item('groupes-date', 'document', 'Regrouper par date', { coche: estGroupeParDate(i) });
   html += item('actualiser', 'actualiser', 'Actualiser', { raccourci: 'F5' });
+  html += item('menage', 'balai', 'Faire le ménage ici…');
   html += SEPARATEUR;
   html += item('terminal-ici', 'terminal', 'Ouvrir un terminal ici');
   html += item('vscode-ici', 'code', 'Ouvrir dans VS Code');
@@ -2071,6 +2076,7 @@ function executerMenu(action, arg) {
       etat.colonnesOuvert = i;
       return renderPanneau(i);
     case 'actualiser': return rafraichirTout();
+    case 'menage': return ouvrirMenage(i);
     case 'groupes-date':
       config.groupesDate[ctx.dossier] = !estGroupeParDate(i);
       sauver();
@@ -2525,10 +2531,11 @@ function detailsApercu(e) {
   return `${e.est_dossier ? elements(e.nb_elements) : taille(e.taille)}${quand}`;
 }
 
-function afficherApercu(i, e) {
+/** `source` : une autre liste que le panneau (le ménage), avec voisin(chemin, ±1) et ouvrir(e). */
+function afficherApercu(i, e, source = null) {
   etat.apercu?.pdf?.destroy();
   const jeton = (etat.apercu?.jeton ?? 0) + 1;
-  etat.apercu = { i, chemin: e.chemin, jeton };
+  etat.apercu = { i, chemin: e.chemin, jeton, source, entree: e };
   const encore = () => etat.apercu?.jeton === jeton;
   const zone = $('#apercu');
   zone.hidden = false;
@@ -2537,7 +2544,7 @@ function afficherApercu(i, e) {
       <header class="apercu-tete">
         <span class="apercu-icone">${icone(e)}</span>
         <div class="apercu-titre"><strong title="${esc(e.chemin)}">${esc(e.nom)}</strong><span class="apercu-details">${detailsApercu(e)}</span></div>
-        <button type="button" class="bouton" data-apercu="ouvrir">${e.est_dossier ? 'Ouvrir le dossier' : 'Ouvrir'}</button>
+        <button type="button" class="bouton" data-apercu="ouvrir">${source?.libelleOuvrir ?? (e.est_dossier ? 'Ouvrir le dossier' : 'Ouvrir')}</button>
         <button type="button" class="icone-btn" data-apercu="fermer" aria-label="Fermer l’aperçu" title="Fermer (Espace)">${ic('x')}</button>
       </header>
       <div class="apercu-corps"><p class="apercu-vide">Chargement…</p></div>
@@ -2645,15 +2652,20 @@ function clavierApercu(ev, touche) {
     return true;
   }
   if (touche === 'ArrowUp' || touche === 'ArrowDown') {
-    deplacerSelection(i, touche === 'ArrowUp' ? -1 : 1, false);
+    const delta = touche === 'ArrowUp' ? -1 : 1;
+    const { source } = etat.apercu;
+    if (source) {
+      const v = source.voisin(etat.apercu.chemin, delta);
+      if (v) afficherApercu(i, v, source);
+      return true;
+    }
+    deplacerSelection(i, delta, false);
     const e = elementApercu(i);
     if (e && e.chemin !== etat.apercu?.chemin) afficherApercu(i, e);
     return true;
   }
   if (touche === 'Enter') {
-    const e = panneau(i).visibles.find((x) => x.chemin === etat.apercu.chemin);
-    fermerApercu();
-    if (e) ouvrirEntree(i, e);
+    ouvrirDepuisApercu();
     return true;
   }
   const corps = $('#apercu .apercu-corps');
@@ -2672,13 +2684,16 @@ function brancherApercu() {
     if (ev.target.classList.contains('apercu-voile')) return fermerApercu();
     const action = ev.target.closest('[data-apercu]')?.dataset.apercu;
     if (action === 'fermer') return fermerApercu();
-    if (action === 'ouvrir') {
-      const { i, chemin } = etat.apercu;
-      const e = panneau(i).visibles.find((x) => x.chemin === chemin);
-      fermerApercu();
-      if (e) ouvrirEntree(i, e);
-    }
+    if (action === 'ouvrir') ouvrirDepuisApercu();
   });
+}
+
+function ouvrirDepuisApercu() {
+  const { i, chemin, source, entree } = etat.apercu;
+  fermerApercu();
+  if (source) return source.ouvrir(entree);
+  const e = panneau(i).visibles.find((x) => x.chemin === chemin);
+  if (e) ouvrirEntree(i, e);
 }
 
 /** Un clic sur une autre ligne du même panneau change l'aperçu ; s'il disparaît (supprimé, autre dossier), il se ferme. */
@@ -2687,6 +2702,235 @@ function suivreApercu(i) {
   const e = elementApercu(i);
   if (!e || !panneau(i).visibles.some((x) => x.chemin === etat.apercu.chemin)) return fermerApercu();
   if (e.chemin !== etat.apercu.chemin) afficherApercu(i, e);
+}
+
+// ———————————————————————————— Ménage ————————————————————————————
+// menage.rs repère ce qui paraît inutile dans le dossier et ses sous-dossiers. Ici, on décide pour
+// chaque élément : Corbeille (Annuler le remet en place) ou Garder (il n'est plus jamais proposé).
+// Les éléments tagués ou épinglés ne sont jamais proposés.
+
+const CATEGORIES_MENAGE = [
+  ['interrompu', 'Téléchargements interrompus', 'Restes d’un téléchargement qui n’a pas abouti.'],
+  ['temporaire', 'Fichiers temporaires', 'Laissés par Word, LibreOffice ou Windows : ils ne servent plus une fois le document fermé.'],
+  ['installateur', 'Installateurs déjà utilisés', 'Dans les téléchargements depuis plus d’un mois : le logiciel est sans doute déjà installé.'],
+  ['archive', 'Archives déjà extraites', 'Leur contenu est déjà dans le dossier du même nom, juste à côté.'],
+  ['doublon', 'Doublons', 'Copies identiques, octet pour octet, d’un fichier qui, lui, reste en place.'],
+  ['gros', 'Gros fichiers anciens', 'Plus de 500 Mo, pas modifiés depuis plus d’un an.'],
+  ['vieux', 'Vieux téléchargements', 'Dans les téléchargements depuis plus de 6 mois.'],
+  ['vide', 'Dossiers vides', 'Rien dedans depuis plus d’une semaine.'],
+  ['compilation', 'Dossiers de compilation', 'node_modules, target… : l’outil de développement les recrée au besoin.'],
+];
+
+const menage = { jeton: 0, racine: null, suggestions: [], jetes: [], libere: 0, enCours: false, complet: true, erreur: null };
+
+/** Tagués, épinglés (avec leur contenu) et déjà gardés : jamais proposés. */
+function exclusMenage() {
+  const tagues = Object.entries(config.tags).filter(([, t]) => t?.length).map(([c]) => c);
+  const epingles = config.espaces.flatMap((e) => e.epingles.map((x) => x.chemin));
+  return [...new Set([...tagues, ...epingles, ...config.menageGardes])];
+}
+
+function ouvrirMenage(i) {
+  const racine = dossierCourant(i);
+  if (racine) analyserMenage(racine);
+}
+
+async function analyserMenage(racine) {
+  fermerApercu();
+  const jeton = ++menage.jeton;
+  Object.assign(menage, { racine, suggestions: [], jetes: [], libere: 0, enCours: true, complet: true, erreur: null });
+  renderMenage();
+  try {
+    const r = await api.analyserMenage(racine, exclusMenage());
+    if (jeton !== menage.jeton) return;
+    menage.suggestions = r.suggestions.map((s, k) => ({ ...s, k, extension: s.est_dossier ? '' : extensionDe(s.nom) }));
+    menage.complet = r.complet;
+  } catch (e) {
+    if (jeton !== menage.jeton) return;
+    menage.erreur = String(e?.message ?? e);
+  }
+  menage.enCours = false;
+  renderMenage();
+  $('#modale .menage-ligne')?.focus();
+}
+
+/** Les propositions restantes, dans l'ordre affiché (par catégorie, les plus lourdes d'abord). */
+function restesMenage() {
+  return CATEGORIES_MENAGE.flatMap(([id]) => menage.suggestions.filter((s) => s.categorie === id && !s.fait));
+}
+
+/** « Projet/plans » (sous le dossier analysé) plutôt que le chemin entier. */
+function lieuMenage(chemin) {
+  const dossier = parentDe(chemin);
+  if (dossier === menage.racine) return `dans « ${nomAffiche(dossier)} »`;
+  return estSous(dossier, menage.racine) ? dossier.slice(menage.racine.length).replace(/^[\\/]+/, '') : cheminCourt(dossier);
+}
+
+function ligneMenage(s) {
+  const detail = s.original ? ` · copie de « ${esc(nomDe(s.original))} »${parentDe(s.original) === parentDe(s.chemin) ? '' : `, ${esc(lieuMenage(s.original))}`}` : '';
+  return `<li class="menage-ligne" tabindex="-1" data-k="${s.k}">
+    <span class="menage-icone">${icone(s)}</span>
+    <div class="menage-nom"><strong title="${esc(s.chemin)}">${esc(s.nom)}</strong><span>${esc(lieuMenage(s.chemin))}${detail}</span></div>
+    <span class="menage-poids">${s.categorie === 'vide' ? '—' : taille(s.taille)}</span>
+    <span class="menage-age" title="${esc(dateComplete(s.modifie))}">${dateRelative(s.modifie)}</span>
+    <span class="menage-actions">
+      <button type="button" class="icone-btn mini" data-m="voir" aria-label="Aperçu" title="Aperçu (Espace)">${ic('oeil', 16)}</button>
+      <button type="button" class="bouton petit" data-m="garder" title="Ne plus le proposer (G)">Garder</button>
+      <button type="button" class="bouton petit danger" data-m="jeter" title="Mettre à la corbeille (Suppr)">Corbeille</button>
+    </span>
+  </li>`;
+}
+
+function htmlMenage() {
+  if (menage.enCours) return `<div class="menage-attente"><span class="menage-roue" aria-hidden="true"></span>Analyse de « ${esc(nomAffiche(menage.racine))} » et de ses sous-dossiers…</div>`;
+  if (menage.erreur) return `<p class="menage-attente">${esc(menage.erreur)}</p>`;
+  const restes = restesMenage();
+  const jetes = menage.jetes.length ? `<p class="menage-bilan">${ic('coche', 16)} ${pluriel(menage.jetes.length, 'élément mis', 'éléments mis')} à la corbeille · ${taille(menage.libere)} libérés</p>` : '';
+  if (!restes.length) {
+    const fini = menage.suggestions.length ? 'Tout est passé en revue.' : 'Rien à signaler : ce dossier est déjà bien rangé.';
+    return `${jetes}<div class="menage-attente">${ic('balai', 28)}<span>${fini}</span></div>`;
+  }
+  const total = restes.reduce((t, s) => t + s.taille, 0);
+  let html = `${jetes}<p class="menage-resume">${pluriel(restes.length, 'élément proposé', 'éléments proposés')} · ${taille(total)}</p>`;
+  if (!menage.complet) html += '<p class="menage-note">Dossier très grand : l’analyse s’est arrêtée en route. Relancez-la depuis un sous-dossier pour aller plus loin.</p>';
+  for (const [id, titre, aide] of CATEGORIES_MENAGE) {
+    const liste = restes.filter((s) => s.categorie === id);
+    if (!liste.length) continue;
+    const poids = liste.reduce((t, s) => t + s.taille, 0);
+    html += `<section class="menage-groupe">
+      <h3>${titre}<span>${liste.length}${poids ? ` · ${taille(poids)}` : ''}</span></h3>
+      <p class="menage-aide">${aide}</p>
+      <ul>${liste.map(ligneMenage).join('')}</ul>
+    </section>`;
+  }
+  return html;
+}
+
+function renderMenage() {
+  let fenetre = $('#modale .menage');
+  if (!fenetre) {
+    $('#modale').innerHTML = `<div class="voile">
+      <div class="modale menage" role="dialog" aria-modal="true" aria-labelledby="titre-menage">
+        <h2 id="titre-menage">${ic('balai', 22)}<span>Ménage dans « ${esc(nomAffiche(menage.racine))} »</span></h2>
+        <div class="menage-contenu"></div>
+        <div class="actions">
+          <span class="menage-astuce">↑ ↓ choisir · Suppr corbeille · G garder · Espace aperçu</span>
+          <span class="pousse"></span>
+          <button type="button" class="bouton" data-m="oublier-gardes" hidden></button>
+          <button type="button" class="bouton principal" data-m="fermer">Fermer</button>
+        </div>
+      </div></div>`;
+    fenetre = $('#modale .menage');
+    $('#modale .voile').addEventListener('mousedown', (ev) => ev.target === ev.currentTarget && fermerModale());
+    fenetre.addEventListener('click', (ev) => actionMenage(ev.target.closest('[data-m]'), ev.target.closest('.menage-ligne')));
+    fenetre.addEventListener('keydown', clavierMenage);
+    quandFermeModale = finirMenage;
+  }
+  fenetre.querySelector('.menage-contenu').innerHTML = htmlMenage();
+  // Les éléments gardés ici peuvent être reproposés
+  const gardes = config.menageGardes.filter((c) => c === menage.racine || estSous(c, menage.racine)).length;
+  const oublier = fenetre.querySelector('[data-m="oublier-gardes"]');
+  oublier.hidden = !gardes || menage.enCours;
+  oublier.textContent = `Reproposer ${gardes > 1 ? `les ${gardes} éléments gardés` : 'l’élément gardé'}`;
+}
+
+function suggestionDe(ligne) {
+  return ligne ? menage.suggestions[+ligne.dataset.k] : null;
+}
+
+/** Après une décision : la ligne suivante prend le relais (ou la précédente, en fin de liste). */
+function decider(s, fait) {
+  const restes = restesMenage();
+  const pos = restes.indexOf(s);
+  s.fait = fait;
+  const suivant = restes[pos + 1] ?? restes[pos - 1];
+  renderMenage();
+  if (suivant && suivant !== s) $(`#modale .menage-ligne[data-k="${suivant.k}"]`)?.focus();
+  else $('#modale [data-m="fermer"]')?.focus();
+}
+
+async function actionMenage(bouton, ligne) {
+  const action = bouton?.dataset.m;
+  if (action === 'fermer') return fermerModale();
+  if (action === 'oublier-gardes') {
+    config.menageGardes = config.menageGardes.filter((c) => !(c === menage.racine || estSous(c, menage.racine)));
+    sauver();
+    return analyserMenage(menage.racine);
+  }
+  const s = suggestionDe(ligne);
+  if (!s || s.fait || s.enCours) return;
+  if (action === 'voir') return afficherApercu(-1, s, sourceMenage);
+  if (action === 'garder') {
+    config.menageGardes.push(s.chemin);
+    sauver();
+    return decider(s, 'garde');
+  }
+  if (action === 'jeter') {
+    s.enCours = true;
+    try {
+      await api.corbeille([s.chemin]);
+    } catch (e) {
+      return erreur(e);
+    } finally {
+      s.enCours = false;
+    }
+    menage.jetes.push(s.chemin);
+    menage.libere += s.taille;
+    decider(s, 'jete');
+  }
+}
+
+/** Aperçu depuis le ménage : ↑ ↓ passent aux propositions voisines, Entrée montre l'élément dans son dossier. */
+const sourceMenage = {
+  libelleOuvrir: 'Afficher dans son dossier',
+  voisin(chemin, delta) {
+    const restes = restesMenage();
+    const v = restes[restes.findIndex((s) => s.chemin === chemin) + delta];
+    if (v) $(`#modale .menage-ligne[data-k="${v.k}"]`)?.focus();
+    return v ?? null;
+  },
+  ouvrir(s) {
+    fermerModale();
+    montrerDansDossier(s.chemin);
+  },
+};
+
+function clavierMenage(ev) {
+  // Pendant l'aperçu, c'est lui qui prend les touches
+  if (etat.apercu || ev.target.matches('button') && (ev.key === ' ' || ev.key === 'Enter')) return;
+  const ligne = ev.target.closest('.menage-ligne');
+  const restes = restesMenage();
+  const s = suggestionDe(ligne);
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    const pos = s ? restes.indexOf(s) : -1;
+    const v = restes[Math.max(0, Math.min(restes.length - 1, pos + (ev.key === 'ArrowDown' ? 1 : -1)))];
+    if (v) $(`#modale .menage-ligne[data-k="${v.k}"]`)?.focus();
+  } else if (s && ev.key === 'Delete') actionMenage({ dataset: { m: 'jeter' } }, ligne);
+  else if (s && ev.key.toLowerCase() === 'g' && !ev.ctrlKey) actionMenage({ dataset: { m: 'garder' } }, ligne);
+  else if (s && ev.key === ' ') actionMenage({ dataset: { m: 'voir' } }, ligne);
+  else return;
+  ev.preventDefault();
+  ev.stopPropagation();
+}
+
+/** À la fermeture : le bilan, avec Annuler pour tout remettre en place. */
+function finirMenage() {
+  menage.jeton++;
+  fermerApercu();
+  const jetes = menage.jetes;
+  if (!jetes.length) return;
+  notifier(`Ménage : ${pluriel(jetes.length, 'élément mis', 'éléments mis')} à la corbeille, ${taille(menage.libere)} libérés`, {
+    annuler: async () => {
+      try {
+        await api.ressortir(jetes);
+        notifier(`${libelleElements(jetes)} remis en place`);
+      } catch (e) {
+        erreur(e);
+      }
+      rafraichirTout();
+    },
+  });
+  rafraichirTout();
 }
 
 // ———————————————————————————— Glisser-déposer ————————————————————————————
@@ -2878,6 +3122,7 @@ function actionPanneau(i, action, d) {
   const p = panneau(i);
   switch (action) {
     case 'oublier-introuvables': return oublierIntrouvables(i);
+    case 'menage': return ouvrirMenage(i);
     case 'onglet': return changerOnglet(i, +d.k);
     case 'fermer-onglet': return fermerOnglet(i, +d.k);
     case 'nouvel-onglet': return nouvelOnglet(i, dossierCourant(i) || standards.accueil);
@@ -3203,16 +3448,18 @@ function clavier(ev) {
 
   if (touche === 'Escape') {
     if (etat.menu) return fermerMenu();
-    if ($('#modale').innerHTML) return fermerModale();
+    // L'aperçu se ferme avant la fenêtre en dessous (ménage)
     if (etat.apercu) return fermerApercu();
+    if ($('#modale').innerHTML) return fermerModale();
     if (etat.colonnesOuvert != null) {
       const i = etat.colonnesOuvert;
       etat.colonnesOuvert = null;
       return renderPanneau(i);
     }
   }
-  if (ev.target.matches('input, textarea, select') || $('#modale').innerHTML) return;
+  if (ev.target.matches('input, textarea, select')) return;
   if (etat.apercu && clavierApercu(ev, touche)) return ev.preventDefault();
+  if ($('#modale').innerHTML) return;
 
   const i = etat.actif;
   const p = panneau(i);

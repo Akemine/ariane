@@ -23,6 +23,7 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Clic droit** sur un élément ou dans le vide pour tout faire : créer un dossier ou un fichier, renommer, corbeille, ouvrir un terminal ou VS Code, copier le chemin…
 - **Aperçu rapide** : Espace montre l'élément sélectionné sans ouvrir d'application, comme le Coup d'œil de macOS : images, PDF (lecteur d'Edge sous Windows, pdf.js sous Linux), vidéos, sons, textes et code, contenu d'un dossier. ↑ ↓ passent à l'élément voisin, Entrée l'ouvre, Espace ou Échap referme.
 - **Actualisation automatique** : un fichier créé, renommé ou supprimé par une autre application (téléchargement fini, document enregistré…) apparaît tout seul dans la liste.
+- **Ménage** (balai de la barre d'outils, ou clic droit › Faire le ménage ici) : Ariane parcourt le dossier et ses sous-dossiers et propose ce qui paraît inutile — téléchargements interrompus, fichiers temporaires (`~$devis.docx`…), installateurs de plus d'un mois dans les Téléchargements, archives déjà extraites, doublons identiques octet pour octet, gros fichiers de plus d'un an, vieux téléchargements, dossiers vides, `node_modules` / `target` abandonnés. Pour chacun, on choisit : Corbeille (Suppr), Garder (G, plus jamais proposé) ou Aperçu (Espace). Tout passe par la corbeille et Annuler remet tout en place. Jamais proposés : ce qui a moins de 7 jours, ce qui est tagué ou épinglé, les dossiers cachés et système, les dossiers de base même vides.
 - **Fichiers cachés** affichables (Ctrl+H), corbeille native du système.
 
 ## Lancer en développement
@@ -152,6 +153,7 @@ src-tauri/            Backend Rust
   src/peripheriques.rs  Clés USB, disques externes : détecter, monter, éjecter
   src/apercu.rs       Aperçu rapide : adresse apercu://, début des textes
   src/surveillance.rs Actualisation automatique des dossiers affichés
+  src/menage.rs       Ménage : repérer l'inutile, ressortir de la corbeille
   src/reseau.rs       Dossiers réseau : connexion (Windows), montage par GNOME (Linux)
   src/config.rs       Lecture / écriture des réglages
   tauri.conf.json     Fenêtre, paquets rpm / deb / msi
