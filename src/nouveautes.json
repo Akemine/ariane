@@ -1,7 +1,7 @@
 [
   {
-    "version": "prochaine",
-    "date": "",
+    "version": "0.8.12",
+    "date": "2026-11-03",
     "points": [
       "Ménage : le balai de la barre d’outils passe le dossier en revue et propose ce qui paraît inutile — téléchargements interrompus, fichiers temporaires, installateurs déjà utilisés, archives déjà extraites, doublons, vieux gros fichiers, dossiers vides.",
       "Vous décidez pour chaque élément : Corbeille (Suppr), Garder (G, il ne sera plus proposé) ou Aperçu (Espace). Annuler remet tout en place. Rien de tagué, d’épinglé ou de récent n’est jamais proposé."
