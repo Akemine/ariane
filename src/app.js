@@ -2741,7 +2741,7 @@ function suivreApercu(i) {
 // ———————————————————————————— Ménage ————————————————————————————
 // menage.rs repère ce qui paraît inutile dans le dossier et ses sous-dossiers. Ici, on décide pour
 // chaque élément : Corbeille (Annuler le remet en place) ou Garder (il n'est plus jamais proposé).
-// Les éléments tagués ou épinglés ne sont jamais proposés.
+// Les éléments tagués ne sont jamais proposés, ni leur contenu ; un dossier épinglé est passé en revue.
 
 const CATEGORIES_MENAGE = [
   ['interrompu', 'Téléchargements interrompus', 'Restes d’un téléchargement qui n’a pas abouti.'],
@@ -2757,11 +2757,15 @@ const CATEGORIES_MENAGE = [
 
 const menage = { jeton: 0, racine: null, suggestions: [], jetes: [], libere: 0, enCours: false, complet: true, erreur: null };
 
-/** Tagués, épinglés (avec leur contenu) et déjà gardés : jamais proposés. */
+/** Tagués et déjà gardés : jamais proposés, ni rien de ce qu'ils contiennent. */
 function exclusMenage() {
   const tagues = Object.entries(config.tags).filter(([, t]) => t?.length).map(([c]) => c);
-  const epingles = config.espaces.flatMap((e) => e.epingles.map((x) => x.chemin));
-  return [...new Set([...tagues, ...epingles, ...config.menageGardes])];
+  return [...new Set([...tagues, ...config.menageGardes])];
+}
+
+/** Épinglés : jamais proposés eux-mêmes, mais un dossier épinglé (Téléchargements…) est passé en revue. */
+function epinglesMenage() {
+  return [...new Set(config.espaces.flatMap((e) => e.epingles.map((x) => x.chemin)))];
 }
 
 function ouvrirMenage(i) {
@@ -2775,7 +2779,7 @@ async function analyserMenage(racine) {
   Object.assign(menage, { racine, suggestions: [], jetes: [], libere: 0, enCours: true, complet: true, erreur: null });
   renderMenage();
   try {
-    const r = await api.analyserMenage(racine, exclusMenage());
+    const r = await api.analyserMenage(racine, exclusMenage(), epinglesMenage());
     if (jeton !== menage.jeton) return;
     menage.suggestions = r.suggestions.map((s, k) => ({ ...s, k, extension: s.est_dossier ? '' : extensionDe(s.nom) }));
     menage.complet = r.complet;

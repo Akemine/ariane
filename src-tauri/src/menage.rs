@@ -172,7 +172,10 @@ struct Candidat {
 pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf], proteges: &[PathBuf], maintenant: SystemTime) -> Analyse {
     let debut = Instant::now();
     let moi: Vec<PathBuf> = [std::env::var("APPIMAGE").ok().map(PathBuf::from), std::env::current_exe().ok()].into_iter().flatten().collect();
+    // `exclus` : avec tout leur contenu, jamais parcourus. `proteges` : jamais proposés eux-mêmes,
+    // mais un dossier protégé (épinglé, de base) est quand même parcouru.
     let exclu = |p: &Path| exclus.iter().any(|x| p.starts_with(x)) || moi.iter().any(|m| m == p);
+    let protege = |p: &Path| proteges.iter().any(|x| x == p);
     let mut suggestions = Vec::new();
     let mut par_taille: HashMap<u64, Vec<Candidat>> = HashMap::new();
     let mut parcourus = 0u64;
@@ -208,7 +211,7 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
                 }
                 if let Some(repere) = dossier_compilation(&chemin, &nom) {
                     let repere_age = fs::metadata(&repere).map(|m| age_jours(maintenant, &m)).unwrap_or(0.0);
-                    if age > 90.0 && repere_age > 90.0 {
+                    if age > 90.0 && repere_age > 90.0 && !protege(&chemin) {
                         let mut budget = 200_000;
                         let taille = taille_arbre(&chemin, &mut budget);
                         suggestions.push(Suggestion { chemin: chemin.to_string_lossy().into_owned(), nom, est_dossier: true, taille, modifie: millisecondes(&meta), categorie: "compilation", original: None });
@@ -217,7 +220,7 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
                 }
                 let vide = fs::read_dir(&chemin).map(|mut l| l.next().is_none()).unwrap_or(false);
                 if vide {
-                    if age > RECENT_JOURS && !proteges.iter().any(|p| p == &chemin) {
+                    if age > RECENT_JOURS && !protege(&chemin) {
                         suggestions.push(Suggestion { chemin: chemin.to_string_lossy().into_owned(), nom, est_dossier: true, taille: 0, modifie: millisecondes(&meta), categorie: "vide", original: None });
                     }
                     continue;
@@ -226,6 +229,9 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
                 continue;
             }
             let taille = meta.len();
+            if protege(&chemin) {
+                continue;
+            }
             if let Some(categorie) = categorie_fichier(&nom, taille, age, dans_telechargements, &voisins) {
                 suggestions.push(Suggestion { chemin: chemin.to_string_lossy().into_owned(), nom, est_dossier: false, taille, modifie: millisecondes(&meta), categorie, original: None });
             } else if taille >= DOUBLON_MIN && age > RECENT_JOURS && !nom.starts_with('.') {
@@ -262,10 +268,11 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
     Analyse { suggestions, parcourus, complet }
 }
 
-/// Analyse `racine` et ses sous-dossiers. `exclus` : éléments tagués, épinglés ou gardés
-/// (avec tout leur contenu).
+/// Analyse `racine` et ses sous-dossiers. `exclus` : éléments tagués ou gardés, avec tout leur
+/// contenu. `epingles` : ils restent, mais pas forcément ce qu'ils contiennent (épingler
+/// Téléchargements pour y aller vite ne veut pas dire tout y garder).
 #[tauri::command]
-pub async fn analyser_menage(racine: String, exclus: Vec<String>) -> Result<Analyse, String> {
+pub async fn analyser_menage(racine: String, exclus: Vec<String>, epingles: Vec<String>) -> Result<Analyse, String> {
     en_tache(move || {
         let racine = PathBuf::from(racine);
         if !racine.is_dir() {
@@ -277,6 +284,7 @@ pub async fn analyser_menage(racine: String, exclus: Vec<String>) -> Result<Anal
             .into_iter()
             .flatten()
             .chain([racine.clone()])
+            .chain(epingles.into_iter().map(PathBuf::from))
             .collect();
         Ok(analyser(&racine, dirs::download_dir().as_deref(), &exclus, &proteges, SystemTime::now()))
     })
@@ -349,12 +357,16 @@ mod tests {
         ecrire("b/photo copie.jpg", &photo, 20);
         ecrire("b/presque.jpg", &autre, 20);
         ecrire("garde/important.tmp", b"x", 30);
+        // Dossier épinglé : son contenu reste proposé ; fichier épinglé : jamais
+        ecrire("epingle/~$vieux.docx", b"x", 30);
+        ecrire("note-epinglee.tmp", b"x", 30);
         ecrire(".cache/x.tmp", b"x", 30);
         ecrire("projet/package.json", b"{}", 120);
         ecrire("projet/node_modules/lib/index.js", b"12345", 120);
         fs::create_dir_all(racine.join("vide")).unwrap();
 
-        let a = analyser(&racine, Some(&racine.join("dl")), &[racine.join("garde")], &[racine.clone()], maintenant);
+        let proteges = [racine.clone(), racine.join("epingle"), racine.join("note-epinglee.tmp")];
+        let a = analyser(&racine, Some(&racine.join("dl")), &[racine.join("garde")], &proteges, maintenant);
         let mut vus: Vec<(String, &str)> = a
             .suggestions
             .iter()
@@ -366,6 +378,7 @@ mod tests {
             [
                 ("b/photo copie.jpg".to_string(), "doublon"),
                 ("dl/setup.exe".into(), "installateur"),
+                ("epingle/~$vieux.docx".into(), "temporaire"),
                 ("film.mp4.crdownload".into(), "interrompu"),
                 ("plans.zip".into(), "archive"),
                 ("projet/node_modules".into(), "compilation"),
@@ -378,5 +391,26 @@ mod tests {
         assert_eq!(a.suggestions.iter().find(|s| s.categorie == "compilation").unwrap().taille, 5);
         assert!(a.complet);
         fs::remove_dir_all(&racine).ok();
+    }
+
+    /// Le vrai dossier Téléchargements de ce PC (à lancer à la main) : ce que le balai y propose.
+    #[test]
+    #[ignore]
+    fn telechargements_de_ce_pc() {
+        let dl = dirs::download_dir().unwrap();
+        let a = analyser(&dl, Some(&dl), &[], &[dl.clone()], SystemTime::now());
+        let mut par_categorie: HashMap<&str, (usize, u64)> = HashMap::new();
+        for s in &a.suggestions {
+            let c = par_categorie.entry(s.categorie).or_default();
+            c.0 += 1;
+            c.1 += s.taille;
+        }
+        println!("{} éléments parcourus, complet : {}", a.parcourus, a.complet);
+        for (c, (n, t)) in &par_categorie {
+            println!("  {c} : {n} ({} Mo)", t / 1_000_000);
+        }
+        for s in a.suggestions.iter().take(12) {
+            println!("    {} · {} · {:?}", s.categorie, s.nom, s.original.as_deref().map(|o| Path::new(o).file_name().unwrap().to_string_lossy().into_owned()));
+        }
     }
 }

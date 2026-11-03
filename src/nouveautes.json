@@ -1,5 +1,12 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Ménage : un dossier épinglé (Téléchargements, par exemple) est maintenant passé en revue. Avant, le balai le sautait avec tout son contenu et ne trouvait rien."
+    ]
+  },
+  {
     "version": "0.8.13",
     "date": "2026-11-03",
     "points": [
