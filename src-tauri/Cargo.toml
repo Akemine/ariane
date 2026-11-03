@@ -49,6 +49,10 @@ base64 = "0.22"
 windows-sys = { version = "0.61", features = [
   "Win32_Devices_DeviceAndDriverInstallation",
   "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_UI_Shell",
   "Win32_NetworkManagement_WNet",
   "Win32_Security",
   "Win32_Storage_FileSystem",

@@ -9,6 +9,7 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Liste à colonnes configurables** : état Git, taille, date de modification, tags. Tri par nom, taille ou date.
 - **État Git** : branche, commits à pousser ou à récupérer, statut de chaque fichier (Modifié, Nouveau, Ignoré, Conflit). La colonne n'apparaît que dans un dépôt.
 - **Couper / copier / coller** (Ctrl+X, Ctrl+C, Ctrl+V) et **glisser-déposer** : déposer un élément le déplace (couper/coller), sur un autre panneau, un dossier, une épingle, une tuile de la barre ou un morceau du chemin. D’un disque à un autre (vers une clé USB, depuis un disque externe), il est copié : les originaux restent.
+- **Presse-papiers partagé avec le système** : un fichier copié (Ctrl+C) dans Ariane se colle dans Teams, Outlook, Thunderbird, l'Explorateur, Nautilus… et un fichier copié ou coupé dans l'Explorateur ou Nautilus se colle dans Ariane. Mêmes formats que l'Explorateur Windows (CF_HDROP) et que Nautilus (x-special/gnome-copied-files, text/uri-list). C'est l'application qui reçoit qui décide d'accepter un fichier collé : sous Linux, les sites web dans un navigateur ne prennent souvent que les images.
 - **Conflits de noms** : quand le nom est déjà pris, une fenêtre compare les deux éléments (date, taille) et propose Remplacer, Garder les deux (« nom (2) ») ou Ignorer, avec une case pour appliquer le choix à tous. Échap annule le collage.
 - **Annuler** le dernier collage ou déplacement (bouton dans la notification ou Ctrl+Z), y compris les remplacements : l'élément remplacé, mis à la corbeille, revient à sa place.
 - **Barre latérale** : dossiers et fichiers épinglés de l'espace, dossiers de base (Accueil, Bureau, Documents, Téléchargements, Images, Musique, Vidéos), périphériques, tags.
@@ -154,6 +155,7 @@ src-tauri/            Backend Rust
   src/apercu.rs       Aperçu rapide : adresse apercu://, début des textes
   src/surveillance.rs Actualisation automatique des dossiers affichés
   src/menage.rs       Ménage : repérer l'inutile, ressortir de la corbeille
+  src/presse_papiers.rs  Presse-papiers du système (fichiers copiés / coupés)
   src/reseau.rs       Dossiers réseau : connexion (Windows), montage par GNOME (Linux)
   src/config.rs       Lecture / écriture des réglages
   tauri.conf.json     Fenêtre, paquets rpm / deb / msi
@@ -164,7 +166,7 @@ Tests du backend : `cd src-tauri && cargo test`.
 ## Limites connues de la v0.1
 
 - **Dossiers en conflit** : « Remplacer » remplace le dossier entier ; il n'y a pas encore de fusion du contenu des deux dossiers.
-- **Presse-papiers interne** : un Ctrl+C dans Ariane ne se colle pas encore dans Nautilus ou l’Explorateur Windows, et inversement.
+- **Pièces jointes « virtuelles »** : un fichier copié directement depuis une pièce jointe d'Outlook (sans être enregistré) ne se colle pas encore dans Ariane.
 - **Glisser-déposer avec les autres applications** (vers Firefox, VS Code…) pas encore géré.
 - **Actualisation automatique sur les partages réseau sous Linux** : les changements faits depuis un autre PC n'arrivent pas (gvfs ne les signale pas) ; F5 ou le retour dans la fenêtre les affichent.
 - **Pas de barre de progression** pour les grosses copies (l'interface reste utilisable pendant la copie).

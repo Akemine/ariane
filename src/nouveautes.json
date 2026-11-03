@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Le presse-papiers est partagé avec le reste du système : un fichier copié dans Ariane (Ctrl+C) se colle dans Teams, Outlook, Thunderbird, l’Explorateur ou Fichiers (Nautilus).",
+      "Et dans l’autre sens : un fichier copié ou coupé dans l’Explorateur ou Nautilus se colle dans Ariane avec Ctrl+V."
+    ]
+  },
+  {
     "version": "0.8.12",
     "date": "2026-11-03",
     "points": [

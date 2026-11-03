@@ -10,6 +10,7 @@ mod jeux;
 mod maj;
 mod menage;
 mod peripheriques;
+mod presse_papiers;
 mod recherche;
 mod reseau;
 mod surveillance;
@@ -51,6 +52,9 @@ pub fn run() {
             apercu::lire_fichier,
             menage::analyser_menage,
             menage::ressortir_de_la_corbeille,
+            presse_papiers::ecrire_presse_papiers,
+            presse_papiers::lire_presse_papiers,
+            presse_papiers::vider_presse_papiers,
             surveillance::surveiller,
             actions::extraire_archive,
             actions::compresser,

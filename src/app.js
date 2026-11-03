@@ -1470,21 +1470,55 @@ function ouvrirSelection(i) {
   liste.filter((e) => !e.est_dossier).forEach((f) => essayer(api.ouvrir(f.chemin)));
 }
 
-function mettreDansPressePapiers(i, mode) {
+// Le presse-papiers est celui du système (presse_papiers.rs) : un Ctrl+C ici se colle dans Teams,
+// Outlook, l'Explorateur ou Nautilus, et un fichier copié ailleurs se colle ici. etat.pressePapiers
+// en garde une copie ; `systeme` dit qu'elle a bien été transmise au système.
+
+async function mettreDansPressePapiers(i, mode) {
   const chemins = selectionnes(i);
   if (!chemins.length) return;
-  etat.pressePapiers = { mode, chemins };
+  const pp = { mode, chemins, systeme: false };
+  etat.pressePapiers = pp;
   const verbe = mode === 'couper' ? 'coupé' : 'copié';
-  notifier(`${libelleElements(chemins)} ${verbe}${chemins.length > 1 ? 's' : ''}. Collez avec Ctrl+V.`);
   renderTous();
+  try {
+    await api.ecrirePressePapiers(chemins, mode);
+    pp.systeme = true;
+  } catch {
+    // Le collage dans Ariane marche quand même
+  }
+  const ailleurs = pp.systeme ? ', ici ou dans une autre application' : '';
+  notifier(`${libelleElements(chemins)} ${verbe}${chemins.length > 1 ? 's' : ''}. Collez avec Ctrl+V${ailleurs}.`);
+}
+
+/** Relit le presse-papiers du système : des fichiers copiés dans l'Explorateur, Nautilus, une pièce jointe… */
+async function synchroniserPressePapiers() {
+  let s = null;
+  try {
+    s = await api.lirePressePapiers();
+  } catch {
+    return; // presse-papiers occupé : on garde ce qu'on a
+  }
+  const avant = etat.pressePapiers;
+  const meme = (a, b) => a && b && a.mode === b.mode && a.chemins.length === b.chemins.length && a.chemins.every((c, k) => c === b.chemins[k]);
+  if (s?.chemins?.length) {
+    if (!meme(s, avant)) etat.pressePapiers = { ...s, systeme: true };
+  } else if (avant?.systeme) {
+    // Une autre application l'a rempli avec autre chose (du texte…) : plus rien à coller
+    etat.pressePapiers = null;
+  }
+  if (etat.pressePapiers !== avant) renderTous();
 }
 
 async function collerIci(i, destination = dossierCourant(i)) {
+  if (!destination) return;
+  await synchroniserPressePapiers();
   const pp = etat.pressePapiers;
-  if (!pp || !destination) return;
+  if (!pp) return;
   if (pp.mode === 'couper') etat.pressePapiers = null; // un élément coupé ne se colle qu'une fois
   // Collage annulé depuis la fenêtre de conflit : on peut recoller
   if (!(await collerVers(pp.chemins, destination, pp.mode))) etat.pressePapiers = pp;
+  else if (pp.mode === 'couper' && pp.systeme) api.viderPressePapiers().catch(() => {});
 }
 
 /** Copie ou déplace des éléments. Le glisser-déposer passe aussi par ici (mode « couper »).
@@ -3436,6 +3470,8 @@ function brancherEvenements() {
   // Retour dans la fenêtre : on actualise (des fichiers ont pu changer ailleurs)
   window.addEventListener('focus', () => {
     if (!etat.glisse) rafraichirTout();
+    // Des fichiers ont peut-être été copiés dans une autre application : « Coller » les propose
+    synchroniserPressePapiers();
   });
 
   document.addEventListener('keydown', clavier);
@@ -3566,6 +3602,7 @@ async function demarrer() {
   window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme).then(traiterDemandesSysteme, traiterDemandesSysteme);
   window.__TAURI__.event.listen('dossier-modifie', ({ payload }) => dossierModifie(payload));
   chargerJeux();
+  synchroniserPressePapiers();
   // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
   suivrePeripheriques({ premiere: true });
   setInterval(() => {
