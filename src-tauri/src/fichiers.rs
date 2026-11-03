@@ -177,6 +177,11 @@ fn segments(chemin: &Path) -> Vec<Segment> {
             liste.push(Segment { nom: "Accueil".into(), chemin: texte(ancetre) });
             break;
         }
+        // Partage monté par GNOME : « data sur 192.0.0.119 » plutôt que /run/user/1000/gvfs/smb-share:…
+        if let Some(nom) = ancetre.file_name().and_then(|n| crate::reseau::nom_partage_gvfs(&n.to_string_lossy())) {
+            liste.push(Segment { nom, chemin: texte(ancetre) });
+            break;
+        }
         let nom = match ancetre.file_name() {
             Some(n) => n.to_string_lossy().into_owned(),
             None => {
@@ -787,6 +792,13 @@ mod tests {
     fn fil_d_un_dossier_reseau() {
         let noms: Vec<String> = segments(&developper("//srv/data/Bureaux_etudes")).into_iter().map(|s| s.nom).collect();
         assert_eq!(noms, [r"\\srv\data", "Bureaux_etudes"]);
+    }
+
+    #[test]
+    fn fil_d_un_partage_monte_par_gnome() {
+        let p = Path::new("/run/user/1000/gvfs/smb-share:server=192.0.0.119,share=data/TuffigoRapidex");
+        let noms: Vec<String> = segments(p).into_iter().map(|s| s.nom).collect();
+        assert_eq!(noms, ["data sur 192.0.0.119", "TuffigoRapidex"]);
     }
 
     #[test]

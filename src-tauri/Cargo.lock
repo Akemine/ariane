@@ -58,11 +58,12 @@ dependencies = [
 
 [[package]]
 name = "ariane"
-version = "0.8.6"
+version = "0.8.7"
 dependencies = [
  "base64 0.22.1",
  "dirs",
  "flate2",
+ "gtk",
  "open",
  "serde",
  "serde_json",

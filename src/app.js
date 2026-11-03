@@ -110,7 +110,10 @@ function nomDe(chemin) {
 function nomAffiche(chemin) {
   const tag = tagDeVue(chemin);
   if (tag) return trouverTag(tag)?.libelle ?? 'Tag';
-  return chemin === standards.accueil ? 'Accueil' : nomDe(chemin);
+  if (chemin === standards.accueil) return 'Accueil';
+  // Partage monté par GNOME : « data sur 192.0.0.119 »
+  const gvfs = /^smb-share:(?=.*\bserver=([^,]+))(?=.*\bshare=([^,]+))/.exec(nomDe(chemin));
+  return gvfs ? `${decodeURIComponent(gvfs[2])} sur ${gvfs[1]}` : nomDe(chemin);
 }
 
 // ——— Vue d'un tag : tous les éléments qui le portent, où qu'ils soient ———
@@ -121,15 +124,18 @@ function tagDeVue(chemin) {
 }
 
 /** Le contenu d'un dossier, ou celui d'une vue de tag (mêmes champs, plus `vueTag` et `introuvables`). */
-/** Un dossier réseau (\\serveur\partage) sans identifiants : Windows les demande dans sa
- *  propre fenêtre, puis on réessaie. Seulement quand on y va, pas à chaque actualisation. */
+/** Dossiers réseau, seulement quand on y va (pas à chaque actualisation).
+ *  Windows : sans identifiants, Windows les demande dans sa propre fenêtre, puis on réessaie.
+ *  Linux : \\serveur\partage et smb://… sont montés par GNOME, comme dans Nautilus, puis lus par
+ *  leur dossier local ; un partage épinglé se remonte tout seul après un redémarrage. */
 async function lireOuConnecter(chemin) {
+  if (!sousWindows() && /^(\\\\|smb:\/\/)/i.test(chemin)) chemin = await api.connecterPartage(chemin);
   try {
     return await lire(chemin);
   } catch (e) {
-    if (!String(e).startsWith('Connexion requise')) throw e;
-    await api.connecterPartage(chemin);
-    return lire(chemin);
+    const reconnecter = sousWindows() ? String(e).startsWith('Connexion requise') : /\/gvfs\/smb-share:/.test(chemin);
+    if (!reconnecter) throw e;
+    return lire(await api.connecterPartage(chemin));
   }
 }
 
@@ -1706,7 +1712,7 @@ function viderRecherche() {
 const rechercheGlobale = { jeton: 0, minuterie: null, resultats: [], index: 0, ouvert: false, complet: true, requete: '', enCours: false };
 
 function estChemin(texte) {
-  return /^(\/|~|[a-zA-Z]:[\\/]|\\\\)/.test(texte);
+  return /^(\/|~|[a-zA-Z]:[\\/]|\\\\|smb:\/\/)/i.test(texte);
 }
 
 function planifierRecherche(texte) {

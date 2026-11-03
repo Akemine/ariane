@@ -35,6 +35,10 @@ lto = true
 opt-level = "s"
 strip = true
 
+# Linux uniquement : partages réseau montés par GNOME, avec sa fenêtre de connexion (déjà compilé pour Tauri)
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
 # Windows uniquement : lecture du registre (launchers de jeux) et encodage des icônes
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

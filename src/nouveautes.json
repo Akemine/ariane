@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Dossiers réseau sous Linux : tapez \\\\serveur\\partage\\dossier (ou smb://serveur/partage/dossier) pour l’ouvrir. Le partage est connecté comme dans Fichiers (Nautilus), avec la fenêtre de connexion de GNOME et « Mémoriser ».",
+      "Un partage épinglé se reconnecte tout seul après un redémarrage, et le chemin affiche « data sur 192.0.0.119 » au lieu de /run/user/…/gvfs."
+    ]
+  },
+  {
     "version": "0.8.7",
     "date": "2026-11-03",
     "points": [
