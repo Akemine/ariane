@@ -3,6 +3,7 @@ const appeler = (commande, args) => window.__TAURI__.core.invoke(commande, args)
 
 export const api = {
   lister: (chemin) => appeler('lister_dossier', { chemin }),
+  decrireChemins: (chemins) => appeler('decrire_chemins', { chemins }),
   standards: () => appeler('dossiers_standards'),
   creerDossier: (parent, nom) => appeler('creer_dossier', { parent, nom }),
   creerFichier: (parent, nom) => appeler('creer_fichier', { parent, nom }),

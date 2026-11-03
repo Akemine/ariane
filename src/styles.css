@@ -74,7 +74,6 @@ button:disabled { opacity: .4; cursor: default; }
 .app {
   height: 100vh;
   display: flex;
-  gap: 10px;
   padding: 10px;
   background: var(--teinte);
   transition: background-color .25s;
@@ -83,7 +82,8 @@ button:disabled { opacity: .4; cursor: default; }
 /* ———————————— Barre latérale ———————————— */
 
 .barre {
-  width: 260px;
+  /* Réglée en glissant la poignée ; jamais plus de 40 % de la fenêtre */
+  width: clamp(200px, var(--largeur-barre, 260px), 40vw);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -251,7 +251,17 @@ button:disabled { opacity: .4; cursor: default; }
 
 /* ———————————— Panneaux ———————————— */
 
-.panneaux { flex: 1; min-width: 0; display: flex; gap: 10px; }
+.panneaux { flex: 1; min-width: 0; display: flex; }
+
+/* Poignées : entre la barre et les panneaux, et entre les deux panneaux (elles font l'espace de 10 px) */
+.separateur { flex: none; width: 10px; position: relative; cursor: col-resize; touch-action: none; outline: none; }
+.separateur::after {
+  content: ''; position: absolute; top: 14px; bottom: 14px; left: 50%; width: 3px; margin-left: -1.5px;
+  border-radius: 99px; background: transparent; transition: background-color .12s;
+}
+.separateur:hover::after, .separateur.actif::after { background: color-mix(in srgb, var(--espace) 45%, transparent); }
+.separateur:focus-visible::after { background: var(--espace); }
+body.redimension, body.redimension * { cursor: col-resize !important; -webkit-user-select: none; user-select: none; }
 .panneau {
   flex: 1 1 0; min-width: 0; position: relative; container-type: inline-size;
   display: flex; flex-direction: column;
@@ -372,6 +382,11 @@ button:disabled { opacity: .4; cursor: default; }
 
 .c-nom { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .c-nom .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* Vue d'un tag : le dossier où se trouve chaque élément */
+.c-nom .lieu { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px; border-radius: 99px; background: var(--neutre); font-size: 12px; font-weight: 600; color: var(--discret); }
+.point-tag { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--c); margin: 0 3px; }
+.pied-droite { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.introuvables { color: var(--discret); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ligne.cache .nom { color: var(--texte-3); }
 .ic-dossier, .ic-fichier { flex: none; }
 .ic-fichier { margin: 0 4px 0 2px; }

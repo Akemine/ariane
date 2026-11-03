@@ -15,6 +15,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             fichiers::lister_dossier,
+            fichiers::decrire_chemins,
             fichiers::dossiers_standards,
             fichiers::creer_dossier,
             fichiers::creer_fichier,

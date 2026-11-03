@@ -73,7 +73,6 @@ const etat = {
   glisse: null, // glisser-déposer en cours
   survolEl: null,
   renduDiffere: new Set(),
-  filtreTag: null,
   recherche: '',
   recherchePanneau: 0,
   colonnesOuvert: null,
@@ -109,7 +108,57 @@ function nomDe(chemin) {
   return morceaux.length ? morceaux[morceaux.length - 1] : chemin;
 }
 function nomAffiche(chemin) {
+  const tag = tagDeVue(chemin);
+  if (tag) return trouverTag(tag)?.libelle ?? 'Tag';
   return chemin === standards.accueil ? 'Accueil' : nomDe(chemin);
+}
+
+// ——— Vue d'un tag : tous les éléments qui le portent, où qu'ils soient ———
+// Un onglet s'y rend comme vers un dossier, avec un chemin « tag:<id> » (historique, onglets, réouverture).
+const VUE_TAG = 'tag:';
+function tagDeVue(chemin) {
+  return chemin?.startsWith(VUE_TAG) ? chemin.slice(VUE_TAG.length) : null;
+}
+
+/** Le contenu d'un dossier, ou celui d'une vue de tag (mêmes champs, plus `vueTag` et `introuvables`). */
+async function lire(chemin) {
+  const id = tagDeVue(chemin);
+  if (!id) return api.lister(chemin);
+  const t = trouverTag(id);
+  if (!t) throw 'Ce tag n’existe plus.';
+  const chemins = Object.keys(config.tags).filter((c) => config.tags[c].includes(id));
+  const entrees = await api.decrireChemins(chemins);
+  const trouves = new Set(entrees.map((e) => e.chemin));
+  return {
+    chemin,
+    parent: null,
+    segments: [{ nom: `Tag « ${t.libelle} »`, chemin }],
+    entrees,
+    vueTag: id,
+    introuvables: chemins.filter((c) => !trouves.has(c)),
+  };
+}
+
+/** Clic sur un tag de la barre : sa vue dans le panneau actif ; second clic : on revient d'où l'on vient. */
+function ouvrirVueTag(id) {
+  const i = etat.actif;
+  const o = ongletCourant(panneau(i));
+  if (tagDeVue(o.chemin) === id) return o.pos > 0 ? historique(i, -1) : naviguer(i, standards.accueil);
+  return naviguer(i, VUE_TAG + id);
+}
+
+/** Les vues de tag ouvertes se relisent (un tag ajouté ou retiré, un élément renommé…). */
+function rechargerVuesTag() {
+  for (let i = 0; i < nbPanneaux(); i++) if (panneau(i).contenu?.vueTag) charger(i);
+}
+
+/** Oublie les éléments tagués introuvables de la vue (supprimés ou déplacés hors d'Ariane). */
+function oublierIntrouvables(i) {
+  const perdus = panneau(i).contenu?.introuvables ?? [];
+  for (const c of perdus) delete config.tags[c];
+  sauver();
+  renderBarre();
+  rechargerVuesTag();
 }
 /** `chemin` est-il `parent` ou à l'intérieur ? */
 function estSous(chemin, parent) {
@@ -146,8 +195,10 @@ function panneau(i = etat.actif) {
 function ongletCourant(p) {
   return p.onglets[p.ongletActif];
 }
+/** Le dossier ouvert ; null dans la vue d'un tag (on ne crée ni ne colle rien « dans un tag »). */
 function dossierCourant(i = etat.actif) {
-  return panneau(i)?.contenu?.chemin ?? null;
+  const c = panneau(i)?.contenu;
+  return c && !c.vueTag ? c.chemin : null;
 }
 function nbPanneaux() {
   return config.deuxPanneaux ? 2 : 1;
@@ -165,6 +216,120 @@ async function essayer(promesse) {
 }
 function libelleElements(chemins) {
   return chemins.length === 1 ? `« ${nomDe(chemins[0])} »` : `${chemins.length} éléments`;
+}
+
+// ———————————————————————————— Tailles : barre latérale et panneaux ————————————————————————————
+// La barre va de 200 px (le champ de recherche et les pastilles d'espaces tiennent encore) à 440 px,
+// et jamais plus de 40 % de la fenêtre (règle CSS). Un nom plus long est coupé « … » et complet au survol ;
+// le double-clic sur la poignée ajuste la barre au plus long.
+
+const BARRE = { min: 200, max: 440, defaut: 260 };
+const PANNEAU_MIN = 300; // px : en dessous, la liste devient illisible
+const borner = (v, min, max) => Math.min(max, Math.max(min, v));
+const barreMax = () => Math.min(BARRE.max, Math.round(innerWidth * 0.4));
+
+function appliquerTailles() {
+  document.documentElement.style.setProperty('--largeur-barre', `${config.largeurBarre}px`);
+  const sep = $('#separateur-barre');
+  sep.setAttribute('aria-valuemin', BARRE.min);
+  sep.setAttribute('aria-valuemax', barreMax());
+  sep.setAttribute('aria-valuenow', Math.min(config.largeurBarre, barreMax()));
+  const [a, b] = document.querySelectorAll('#panneaux .panneau');
+  if (a && b) {
+    a.style.flexGrow = config.partPanneaux;
+    b.style.flexGrow = 1 - config.partPanneaux;
+    $('#panneaux .separateur')?.setAttribute('aria-valuenow', Math.round(config.partPanneaux * 100));
+  }
+}
+
+/** Glisser une poignée (ou ← → au clavier) ; double-clic pour la valeur « idéale ». On enregistre à la fin. */
+function brancherSeparateur(el, { debut, suivre, pas, doubleClic }) {
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    const x0 = ev.clientX;
+    const base = debut();
+    el.setPointerCapture(ev.pointerId);
+    el.classList.add('actif');
+    document.body.classList.add('redimension');
+    const bouger = (e) => {
+      suivre(base, e.clientX - x0);
+      appliquerTailles();
+    };
+    const finir = () => {
+      el.removeEventListener('pointermove', bouger);
+      el.removeEventListener('pointerup', finir);
+      el.removeEventListener('pointercancel', finir);
+      el.classList.remove('actif');
+      document.body.classList.remove('redimension');
+      sauver();
+    };
+    el.addEventListener('pointermove', bouger);
+    el.addEventListener('pointerup', finir);
+    el.addEventListener('pointercancel', finir);
+  });
+  el.addEventListener('dblclick', () => {
+    doubleClic();
+    appliquerTailles();
+    sauver();
+  });
+  el.addEventListener('keydown', (ev) => {
+    const sens = { ArrowLeft: -1, ArrowRight: 1 }[ev.key];
+    if (!sens) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    pas(sens * (ev.shiftKey ? 4 : 1));
+    appliquerTailles();
+    sauver();
+  });
+}
+
+// Les noms de la barre qui peuvent être coupés « … »
+const NOMS_BARRE = '.espace-tete h2, .barre-contenu .epingle > span:not(.compte):not(.peripherique-texte), .peripherique-texte > span:first-child, .tag-nom';
+
+/** La largeur qui montre en entier le plus long nom de la barre (dans les limites). */
+function largeurIdealeBarre() {
+  const barre = $('#barre');
+  const actuelle = barre.getBoundingClientRect().width;
+  const mesure = document.createRange();
+  let besoin = BARRE.defaut;
+  barre.querySelectorAll(NOMS_BARRE).forEach((el) => {
+    if (!el.clientWidth) return;
+    mesure.selectNodeContents(el);
+    // La place d'un nom suit la largeur de la barre au pixel près
+    besoin = Math.max(besoin, actuelle + mesure.getBoundingClientRect().width - el.clientWidth);
+  });
+  return Math.ceil(borner(besoin + 2, BARRE.min, barreMax()));
+}
+
+function brancherSeparateurBarre() {
+  brancherSeparateur($('#separateur-barre'), {
+    debut: () => $('#barre').getBoundingClientRect().width,
+    suivre: (base, dx) => (config.largeurBarre = Math.round(borner(base + dx, BARRE.min, barreMax()))),
+    pas: (n) => (config.largeurBarre = borner(Math.min(config.largeurBarre, barreMax()) + n * 16, BARRE.min, barreMax())),
+    doubleClic: () => (config.largeurBarre = largeurIdealeBarre()),
+  });
+}
+
+function brancherSeparateurPanneaux(el) {
+  // Chaque panneau garde au moins PANNEAU_MIN, si la fenêtre le permet
+  const limites = () => {
+    const largeur = $('#panneaux').getBoundingClientRect().width - el.offsetWidth;
+    const min = largeur > 2 * PANNEAU_MIN ? PANNEAU_MIN / largeur : 0.5;
+    return { largeur, min, max: 1 - min };
+  };
+  brancherSeparateur(el, {
+    debut: () => config.partPanneaux,
+    suivre: (base, dx) => {
+      const l = limites();
+      config.partPanneaux = borner(base + dx / l.largeur, l.min, l.max);
+    },
+    pas: (n) => {
+      const l = limites();
+      config.partPanneaux = borner(config.partPanneaux + n * 0.05, l.min, l.max);
+    },
+    doubleClic: () => (config.partPanneaux = 0.5),
+  });
 }
 
 // ———————————————————————————— Configuration ————————————————————————————
@@ -189,6 +354,8 @@ function configParDefaut() {
     jeuxDeplies: {},
     groupesDate: {},
     theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'sombre' : 'clair',
+    largeurBarre: BARRE.defaut, // px
+    partPanneaux: 0.5, // part du panneau de gauche quand il y en a deux
   };
 }
 
@@ -196,6 +363,8 @@ function completer(lu) {
   const base = configParDefaut();
   const c = { ...base, ...lu };
   c.colonnes = { ...base.colonnes, ...(lu.colonnes || {}) };
+  c.largeurBarre = Number.isFinite(c.largeurBarre) ? borner(c.largeurBarre, BARRE.min, BARRE.max) : base.largeurBarre;
+  c.partPanneaux = Number.isFinite(c.partPanneaux) ? borner(c.partPanneaux, 0.15, 0.85) : base.partPanneaux;
   if (!Array.isArray(c.espaces) || !c.espaces.length) c.espaces = base.espaces;
   // Épingles : anciennes versions = simples chemins de dossiers
   for (const e of c.espaces) e.epingles = (e.epingles || []).map((x) => (typeof x === 'string' ? { chemin: x, dossier: true } : x));
@@ -288,7 +457,7 @@ async function charger(i) {
   const o = ongletCourant(p);
   const jeton = ++p.jeton;
   try {
-    const c = await api.lister(o.chemin);
+    const c = await lire(o.chemin);
     if (jeton !== p.jeton) return;
     p.contenu = c;
     p.erreur = null;
@@ -315,6 +484,11 @@ async function charger(i) {
 async function chargerGit(i, jeton) {
   const p = panneau(i);
   if (!p?.contenu) return;
+  if (p.contenu.vueTag) {
+    // Éléments venus de partout : pas de dépôt Git commun
+    if (p.git) (p.git = null), renderPanneau(i);
+    return;
+  }
   try {
     const g = await api.git(p.contenu.chemin);
     if (jeton !== p.jeton) return;
@@ -332,7 +506,7 @@ async function naviguer(i, chemin, { histo = true } = {}) {
   const jeton = ++p.jeton;
   let c;
   try {
-    c = await api.lister(chemin);
+    c = await lire(chemin);
   } catch (e) {
     if (jeton === p.jeton) erreur(e);
     return false;
@@ -360,6 +534,7 @@ async function naviguer(i, chemin, { histo = true } = {}) {
   }
   if (etat.recherche && etat.recherchePanneau === i) viderRecherche();
   renderPanneau(i);
+  majTagActif();
   sauver();
   chargerGit(i, jeton);
   return true;
@@ -397,6 +572,7 @@ function changerOnglet(i, k) {
   p.hautDePage = true;
   renderPanneau(i);
   charger(i);
+  majTagActif();
   sauver();
 }
 
@@ -454,13 +630,28 @@ function activerPanneau(i) {
   if (i === etat.actif) return;
   etat.actif = i;
   document.querySelectorAll('.panneau').forEach((s) => s.classList.toggle('actif', +s.dataset.i === i));
+  majTagActif();
+}
+
+/** Le tag dont la vue est ouverte dans le panneau actif (null : un vrai dossier, ou pas encore de panneau). */
+function tagOuvert() {
+  const p = panneau(etat.actif);
+  return p ? tagDeVue(ongletCourant(p)?.chemin) : null;
+}
+
+/** Ce tag-là est surligné dans la barre. */
+let tagSurligne = null;
+function majTagActif() {
+  const id = tagOuvert();
+  if (id === tagSurligne) return;
+  tagSurligne = id;
+  renderBarre();
 }
 
 function changerEspace(id, { memoriser = true } = {}) {
   if (id === config.espaceActif) return;
   if (memoriser) memoriserOnglets();
   config.espaceActif = id;
-  etat.filtreTag = null;
   etat.colonnesOuvert = null;
   viderRecherche();
   appliquerTheme();
@@ -477,8 +668,8 @@ function calculerVisibles(i) {
   const p = panneau(i);
   if (!p.contenu) return [];
   let liste = p.contenu.entrees;
-  if (!config.afficherCaches) liste = liste.filter((e) => !e.cache);
-  if (etat.filtreTag) liste = liste.filter((e) => (config.tags[e.chemin] || []).includes(etat.filtreTag));
+  // Un élément tagué s'affiche dans la vue de son tag, même caché : on l'a choisi
+  if (!config.afficherCaches && !p.contenu.vueTag) liste = liste.filter((e) => !e.cache);
   if (etat.recherche && etat.recherchePanneau === i) {
     const q = normaliser(etat.recherche);
     liste = liste.filter((e) => normaliser(e.nom).includes(q));
@@ -546,8 +737,13 @@ function statutGit(p, e) {
 function renderStructure() {
   const zone = $('#panneaux');
   zone.classList.toggle('deux', nbPanneaux() === 2);
-  zone.innerHTML = Array.from({ length: nbPanneaux() }, (_, i) => `<section class="panneau${i === etat.actif ? ' actif' : ''}" data-i="${i}" aria-label="Panneau ${i + 1}"></section>`).join('');
+  const separateur = `<div class="separateur" role="separator" aria-orientation="vertical" aria-label="Largeur des panneaux" aria-valuemin="0" aria-valuemax="100"
+    tabindex="0" title="Glisser pour redimensionner · double-clic : moitié-moitié"></div>`;
+  zone.innerHTML = Array.from({ length: nbPanneaux() }, (_, i) => `<section class="panneau${i === etat.actif ? ' actif' : ''}" data-i="${i}" aria-label="Panneau ${i + 1}"></section>`).join(separateur);
   if (etat.actif >= nbPanneaux()) etat.actif = 0;
+  const poignee = $('#panneaux .separateur');
+  if (poignee) brancherSeparateurPanneaux(poignee);
+  appliquerTailles();
   for (let i = 0; i < nbPanneaux(); i++) renderPanneau(i);
 }
 
@@ -589,7 +785,7 @@ function renderPanneau(i) {
     ${htmlOnglets(i)}
     ${htmlOutils(i)}
     ${etat.colonnesOuvert === i ? htmlColonnes(i) : ''}
-    <div class="zone-liste" ${p.contenu ? `data-depot="${esc(p.contenu.chemin)}"` : ''}>
+    <div class="zone-liste" ${dossierCourant(i) ? `data-depot="${esc(dossierCourant(i))}"` : ''}>
       <div class="defilement">
         <div class="table" role="grid" aria-label="Contenu du dossier" style="--grille: ${grille}">
           ${htmlEntete(i, avecGit)}
@@ -632,9 +828,11 @@ function htmlOnglets(i) {
   const onglets = p.onglets
     .map((o, k) => {
       const actif = k === p.ongletActif;
+      const tag = trouverTag(tagDeVue(o.chemin));
+      const pictogramme = tag ? `<span class="point-tag" style="--c:${tag.couleur}"></span>` : icDossier(couleurDossier(o.chemin), 16, 14);
       return `<div class="onglet${actif ? ' actif' : ''}">
-        <button class="onglet-btn" role="tab" aria-selected="${actif}" data-action="onglet" data-k="${k}" title="${esc(o.chemin)}">
-          ${icDossier(couleurDossier(o.chemin), 16, 14)}<span>${esc(nomAffiche(o.chemin))}</span>
+        <button class="onglet-btn" role="tab" aria-selected="${actif}" data-action="onglet" data-k="${k}" title="${esc(tag ? `Tous les éléments avec le tag « ${tag.libelle} »` : o.chemin)}">
+          ${pictogramme}<span>${esc(nomAffiche(o.chemin))}</span>
         </button>
         ${p.onglets.length > 1 ? `<button class="icone-btn petit" data-action="fermer-onglet" data-k="${k}" aria-label="Fermer l'onglet" title="Fermer l'onglet (Ctrl+W)">${ic('x', 13)}</button>` : ''}
       </div>`;
@@ -652,7 +850,7 @@ function htmlOutils(i) {
     .map((s, k) => {
       const dernier = k === segments.length - 1;
       // Le dernier segment (le dossier ouvert) ouvre la saisie du chemin, comme un clic dans la barre
-      const action = dernier ? 'editer-chemin' : 'aller';
+      const action = dernier ? (p.contenu.vueTag ? '' : 'editer-chemin') : 'aller';
       return `<button class="segment${dernier ? ' dernier' : ''}" data-action="${action}" data-chemin="${esc(s.chemin)}" data-depot="${esc(s.chemin)}">${esc(s.nom)}</button>${dernier ? '' : `<span class="chevron">${ic('avance', 14)}</span>`}`;
     })
     .join('');
@@ -672,8 +870,8 @@ function htmlOutils(i) {
     ${puceGit}
     <button class="bascule${config.afficherCaches ? ' on' : ''}" data-action="caches" aria-pressed="${config.afficherCaches}" title="Fichiers cachés (Ctrl+H)">${ic('oeil', 17)}<span>Cachés</span></button>
     <button class="texte-btn" data-action="colonnes" aria-expanded="${etat.colonnesOuvert === i}" title="Choisir les colonnes">${ic('colonnes', 17)}<span>Colonnes</span></button>
-    <button class="icone-btn" data-action="terminal-ici" aria-label="Ouvrir un terminal ici" title="Ouvrir un terminal ici">${ic('terminal')}</button>
-    <button class="icone-btn" data-action="vscode-ici" aria-label="Ouvrir dans VS Code" title="Ouvrir dans VS Code">${ic('code')}</button>
+    <button class="icone-btn" data-action="terminal-ici" aria-label="Ouvrir un terminal ici" title="Ouvrir un terminal ici" ${dossierCourant(i) ? '' : 'disabled'}>${ic('terminal')}</button>
+    <button class="icone-btn" data-action="vscode-ici" aria-label="Ouvrir dans VS Code" title="Ouvrir dans VS Code" ${dossierCourant(i) ? '' : 'disabled'}>${ic('code')}</button>
   </div>`;
 }
 
@@ -735,7 +933,7 @@ function htmlCorps(i, avecGit) {
   if (!p.visibles.length) {
     let message = 'Ce dossier est vide. Faites un clic droit pour créer un dossier ou un fichier.';
     if (etat.recherche && etat.recherchePanneau === i) message = `Aucun élément ne contient « ${esc(etat.recherche)} ».`;
-    else if (etat.filtreTag) message = `Aucun élément avec le tag « ${esc(trouverTag(etat.filtreTag)?.libelle)} » ici.`;
+    else if (p.contenu.vueTag) message = `Aucun élément n’a encore le tag « ${esc(trouverTag(p.contenu.vueTag)?.libelle)} ». Faites un clic droit sur un fichier ou un dossier pour le lui donner.`;
     else if (p.contenu.entrees.length) message = 'Ce dossier ne contient que des fichiers cachés. Affichez-les avec Ctrl+H.';
     return `<div class="vide">${message}</div>`;
   }
@@ -751,8 +949,10 @@ function htmlCorps(i, avecGit) {
         p.renommage === e.chemin
           ? `<input class="renommage" value="${esc(e.nom)}" aria-label="Nouveau nom" spellcheck="false">`
           : `<span class="nom">${esc(e.nom)}</span>`;
+      // Vue d'un tag : on dit où se trouve chaque élément
+      const lieu = p.contenu.vueTag ? `<span class="lieu" title="${esc(parentDe(e.chemin))}">${esc(nomAffiche(parentDe(e.chemin)))}</span>` : '';
       return `<div class="${classes.join(' ')}" role="row" aria-selected="${p.selection.has(e.chemin)}" data-idx="${idx}" ${e.est_dossier ? `data-depot="${esc(e.chemin)}"` : ''}>
-        <span class="c-nom"><span class="poignee" draggable="${p.renommage === e.chemin ? 'false' : 'true'}">${icone(e)}${nom}</span>${e.cache ? '<span class="pastille-cache">caché</span>' : ''}${e.est_lien ? '<span class="pastille-cache" title="Lien symbolique">lien</span>' : ''}</span>
+        <span class="c-nom"><span class="poignee" draggable="${p.renommage === e.chemin ? 'false' : 'true'}">${icone(e)}${nom}</span>${lieu}${e.cache ? '<span class="pastille-cache">caché</span>' : ''}${e.est_lien ? '<span class="pastille-cache" title="Lien symbolique">lien</span>' : ''}</span>
         ${avecGit ? `<span>${g ? pastilleGit(g) : '<span class="tiret">—</span>'}</span>` : ''}
         ${cols.taille ? `<span class="c-num">${e.est_dossier ? elements(e.nb_elements) : taille(e.taille)}</span>` : ''}
         ${cols.modifie ? `<span class="c-num" title="${esc(dateComplete(e.modifie))}">${dateRelative(e.modifie)}</span>` : ''}
@@ -790,6 +990,13 @@ function htmlPied(i) {
     if (mod) parts.push(pluriel(mod, 'modifié', 'modifiés'));
     if (nouv) parts.push(pluriel(nouv, 'nouveau', 'nouveaux'));
     resume = parts.length ? parts.join(', ') : 'Tout est à jour';
+  }
+  // Vue d'un tag : éléments tagués qui n'existent plus là où on les a vus
+  const perdus = p.contenu.introuvables?.length ?? 0;
+  if (perdus) {
+    resume = `<span class="introuvables" title="${esc(p.contenu.introuvables.join('\n'))}">${pluriel(perdus, 'élément introuvable', 'éléments introuvables')} (supprimé, déplacé hors d’Ariane ou sur un périphérique débranché)</span>
+      <button class="lien-btn" data-action="oublier-introuvables">Oublier</button>`;
+    return `<div class="pied"><span>${texte}</span><span class="pied-droite">${resume}</span></div>`;
   }
   return `<div class="pied"><span>${texte}</span>${resume ? `<span class="git-resume">${resume}</span>` : ''}</div>`;
 }
@@ -912,7 +1119,7 @@ function suivrePeripheriques({ premiere = false } = {}) {
       const partis = avant.filter((p) => !restants.has(p.id));
       // Arraché sans éjection, ou démonté par une autre appli : les onglets ouverts dessus reviennent à l'accueil
       const montes = new Set(liste.map((p) => p.chemin).filter(Boolean));
-      avant.forEach((p) => p.chemin && !montes.has(p.chemin) && quitterPeripherique(p.chemin));
+      avant.forEach((p) => p.chemin && !montes.has(p.chemin) && quitterChemin(p.chemin));
       if (!premiere && arrives.length) {
         const noms = arrives.map((p) => `« ${p.nom} »`).join(', ');
         notifier(`${arrives.length > 1 ? 'Nouveaux périphériques' : 'Nouveau périphérique'} : ${noms}`, { annuler: () => ouvrirPeripherique(arrives[0].id), libelle: 'Ouvrir' });
@@ -930,8 +1137,8 @@ function suivrePeripheriques({ premiere = false } = {}) {
   return lecturePeripheriques;
 }
 
-/** Les onglets ouverts sur un périphérique qui s'en va reviennent à l'accueil. */
-function quitterPeripherique(racine) {
+/** Les onglets ouverts sur ce chemin (périphérique retiré, tag supprimé) reviennent à l'accueil. */
+function quitterChemin(racine) {
   etat.panneaux.forEach((p, i) => {
     let courant = false;
     p.onglets.forEach((o, k) => {
@@ -965,7 +1172,7 @@ async function ejecterPeripherique(id) {
   etat.ejection = id;
   renderBarre();
   // Ariane ne doit plus rien regarder dessus
-  if (p.chemin) quitterPeripherique(p.chemin);
+  if (p.chemin) quitterChemin(p.chemin);
   try {
     await api.ejecterPeripherique(id);
     // Les autres partitions du même disque partent avec : pas de « retiré » en plus
@@ -1059,7 +1266,7 @@ function renderBarre() {
   const peripheriques = htmlPeripheriques();
   const tags = listeTags()
     .map((t) => {
-      const on = etat.filtreTag === t.id;
+      const on = tagOuvert() === t.id;
       return `<button class="tag-btn${on ? ' on' : ''}" data-action="filtre-tag" data-id="${esc(t.id)}" data-tag="${esc(t.id)}" aria-pressed="${on}" style="--c:${t.couleur}"><span class="point"></span><span class="tag-nom">${esc(t.libelle)}</span><span class="compte">${compteTag(t.id) || ''}</span></button>`;
     })
     .join('');
@@ -1089,7 +1296,7 @@ function renderBarre() {
     ${jeux}
     <section aria-label="Tags">
       <div class="titre-bloc"><span>Tags</span>
-        <span class="titre-actions">${etat.filtreTag ? '<button class="lien-btn" data-action="filtre-tag" data-id="">Tout afficher</button>' : ''}
+        <span class="titre-actions">
         <button class="icone-btn mini" data-action="nouveau-tag" aria-label="Nouveau tag" title="Nouveau tag">${ic('plus', 16)}</button></span>
       </div>
       ${tags}
@@ -1381,6 +1588,7 @@ function basculerTag(chemins, id) {
   sauver();
   renderBarre();
   renderTous();
+  rechargerVuesTag();
 }
 
 function colorerDossiers(chemins, couleur) {
@@ -1678,6 +1886,7 @@ function menuElements(i, x, y) {
   let html = `<div class="menu-titre">${esc(un ? un.nom : `${liste.length} éléments`)}</div>`;
   html += item('ouvrir', 'ouvrir', 'Ouvrir', { raccourci: 'Entrée' });
   if (un?.est_dossier) html += item('ouvrir-onglet', 'onglet', 'Ouvrir dans un nouvel onglet');
+  if (un && panneau(i).contenu?.vueTag) html += item('montrer-dossier', 'dossier', 'Afficher dans son dossier');
   // Actions propres au type de l'élément
   if (un && estArchive(un)) {
     html += item('extraire-dossier', 'dossier', `Extraire dans « ${nomSansArchive(un.nom)} »`);
@@ -1769,6 +1978,7 @@ function executerMenu(action, arg) {
     // Éléments sélectionnés
     case 'ouvrir': return ouvrirSelection(i);
     case 'ouvrir-onglet': return un && nouvelOnglet(i, un.chemin);
+    case 'montrer-dossier': return un && montrerDansDossier(un.chemin);
     case 'couper': return mettreDansPressePapiers(i, 'couper');
     case 'copier': return mettreDansPressePapiers(i, 'copier');
     case 'coller-dans': return un && collerIci(i, un.chemin);
@@ -2127,7 +2337,7 @@ function supprimerTag(id) {
     if (reste.length) config.tags[chemin] = reste;
     else delete config.tags[chemin];
   }
-  if (etat.filtreTag === id) etat.filtreTag = null;
+  quitterChemin(VUE_TAG + id);
   sauver();
   renderBarre();
   renderTous();
@@ -2401,6 +2611,7 @@ function finirLasso() {
 function actionPanneau(i, action, d) {
   const p = panneau(i);
   switch (action) {
+    case 'oublier-introuvables': return oublierIntrouvables(i);
     case 'onglet': return changerOnglet(i, +d.k);
     case 'fermer-onglet': return fermerOnglet(i, +d.k);
     case 'nouvel-onglet': return nouvelOnglet(i, dossierCourant(i) || standards.accueil);
@@ -2453,10 +2664,7 @@ function actionBarre(action, d) {
     case 'verifier-maj': return verifierMiseAJour({ manuel: true });
     case 'theme': return basculerModeSombre();
     case 'nouveautes': return ouvrirNouveautes();
-    case 'filtre-tag':
-      etat.filtreTag = d.id && etat.filtreTag !== d.id ? d.id : null;
-      renderBarre();
-      return renderTous();
+    case 'filtre-tag': return ouvrirVueTag(d.id);
     case 'diviser':
       config.deuxPanneaux = !config.deuxPanneaux;
       if (!config.deuxPanneaux) etat.actif = 0;
@@ -2707,7 +2915,11 @@ function brancherEvenements() {
     if (etat.menu && !ev.target.closest('.menu')) fermerMenu();
   });
   window.addEventListener('blur', fermerMenu);
-  window.addEventListener('resize', fermerMenu);
+  window.addEventListener('resize', () => {
+    fermerMenu();
+    appliquerTailles(); // la barre ne dépasse pas 40 % d'une fenêtre qui rétrécit
+  });
+  brancherSeparateurBarre();
 
   // Retour dans la fenêtre : on actualise (des fichiers ont pu changer ailleurs)
   window.addEventListener('focus', () => {

@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Un clic sur un tag affiche tous les fichiers et dossiers qui le portent, où qu’ils soient sur le PC, avec le dossier de chacun. Clic droit › Afficher dans son dossier pour y aller.",
+      "La barre latérale et les deux panneaux se redimensionnent en glissant la poignée qui les sépare. Double-clic : la barre s’ajuste au nom le plus long, les panneaux reviennent à moitié-moitié."
+    ]
+  },
+  {
     "version": "0.8.5",
     "date": "2026-11-03",
     "points": [

@@ -457,49 +457,66 @@ fn restaurer(ids: &[String], erreurs: &mut Vec<String>) {
 
 // ———————————————————————————— commandes ————————————————————————————
 
+/// Une ligne de la liste ; `None` si l'élément a disparu entre-temps.
+fn decrire(chemin_e: PathBuf, nom: String) -> Option<Entree> {
+    let lien = fs::symlink_metadata(&chemin_e).ok()?;
+    let est_lien = lien.file_type().is_symlink();
+    // On suit les liens pour savoir s'ils mènent à un dossier
+    let meta = fs::metadata(&chemin_e).unwrap_or(lien);
+    let est_dossier = meta.is_dir();
+    let nb_elements = if est_dossier {
+        fs::read_dir(&chemin_e)
+            .ok()
+            .map(|l| l.take(LIMITE_COMPTE).count() as u64)
+    } else {
+        None
+    };
+    let extension = if est_dossier {
+        String::new()
+    } else {
+        chemin_e
+            .extension()
+            .map(|x| x.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    Some(Entree {
+        cache: est_cache(&nom, &chemin_e),
+        nom,
+        chemin: texte(&chemin_e),
+        est_dossier,
+        est_lien,
+        taille: if est_dossier { None } else { Some(meta.len()) },
+        nb_elements,
+        modifie: millisecondes(&meta),
+        extension,
+    })
+}
+
+/// Les éléments donnés, où qu'ils soient (vue d'un tag). Ceux qui n'existent plus sont omis.
+#[tauri::command]
+pub async fn decrire_chemins(chemins: Vec<String>) -> Result<Vec<Entree>, String> {
+    en_tache(move || {
+        Ok(chemins
+            .into_iter()
+            .filter_map(|c| {
+                let p = PathBuf::from(&c);
+                let nom = nom_de(&p);
+                decrire(p, nom)
+            })
+            .collect())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn lister_dossier(chemin: String) -> Result<Contenu, String> {
     en_tache(move || {
         let dossier = developper(&chemin);
         let lecture = fs::read_dir(&dossier).map_err(|e| message(&e, &dossier))?;
-        let mut entrees = Vec::new();
-        for entree in lecture.flatten() {
-            let chemin_e = entree.path();
-            let nom = entree.file_name().to_string_lossy().into_owned();
-            let est_lien = entree.file_type().map(|t| t.is_symlink()).unwrap_or(false);
-            // On suit les liens pour savoir s'ils mènent à un dossier
-            let meta = match fs::metadata(&chemin_e).or_else(|_| entree.metadata()) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let est_dossier = meta.is_dir();
-            let nb_elements = if est_dossier {
-                fs::read_dir(&chemin_e)
-                    .ok()
-                    .map(|l| l.take(LIMITE_COMPTE).count() as u64)
-            } else {
-                None
-            };
-            let extension = if est_dossier {
-                String::new()
-            } else {
-                chemin_e
-                    .extension()
-                    .map(|x| x.to_string_lossy().to_lowercase())
-                    .unwrap_or_default()
-            };
-            entrees.push(Entree {
-                cache: est_cache(&nom, &chemin_e),
-                nom,
-                chemin: texte(&chemin_e),
-                est_dossier,
-                est_lien,
-                taille: if est_dossier { None } else { Some(meta.len()) },
-                nb_elements,
-                modifie: millisecondes(&meta),
-                extension,
-            });
-        }
+        let entrees = lecture
+            .flatten()
+            .filter_map(|e| decrire(e.path(), e.file_name().to_string_lossy().into_owned()))
+            .collect();
         Ok(Contenu {
             chemin: texte(&dossier),
             parent: dossier.parent().map(texte),
@@ -755,6 +772,20 @@ mod tests {
         let r = coller_dans(vec![texte(&interieur)], &d, true, &choix(&interieur, "remplacer")).unwrap();
         assert_eq!(r.erreurs.len(), 1);
         assert!(interieur.exists());
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn decrire_des_chemins_epars() {
+        let d = std::env::temp_dir().join("ariane-test-decrire");
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("a/sous")).unwrap();
+        fs::write(d.join("a/rapport.pdf"), "12345").unwrap();
+        let chemins = vec![texte(&d.join("a/rapport.pdf")), texte(&d.join("a/sous")), texte(&d.join("disparu.txt"))];
+        let r = tauri::async_runtime::block_on(decrire_chemins(chemins)).unwrap();
+        assert_eq!(r.len(), 2, "l'élément disparu est omis");
+        assert_eq!((r[0].nom.as_str(), r[0].taille, r[0].extension.as_str()), ("rapport.pdf", Some(5), "pdf"));
+        assert!(r[1].est_dossier && r[1].nb_elements == Some(0));
         let _ = fs::remove_dir_all(&d);
     }
 
