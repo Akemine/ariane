@@ -3065,9 +3065,8 @@ async function demarrer() {
   renderBarre();
   brancherEvenements();
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
-  // Demandes reçues pendant le démarrage, puis toutes les suivantes
-  traiterDemandesSysteme();
-  window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme);
+  // On écoute d'abord, puis on prend celles reçues pendant le démarrage : aucune ne se perd entre les deux
+  window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme).then(traiterDemandesSysteme, traiterDemandesSysteme);
   chargerJeux();
   // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
   suivrePeripheriques({ premiere: true });

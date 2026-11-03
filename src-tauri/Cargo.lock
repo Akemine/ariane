@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "ariane"
-version = "0.8.7"
+version = "0.8.9"
 dependencies = [
  "base64 0.22.1",
  "dirs",

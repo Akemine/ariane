@@ -23,6 +23,21 @@ pub fn prendre_demandes() -> Vec<Demande> {
     std::mem::take(&mut *EN_ATTENTE.lock().unwrap())
 }
 
+/// Argument entre apostrophes, pour la ligne Exec (chemins avec espaces).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn citer(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// Ligne Exec du service. Elle revérifie tout au moment du lancement, car ce fichier passe
+/// avant celui de Nautilus : si Ariane a été désinstallée ou n'est plus le gestionnaire par
+/// défaut, le fichier s'efface et Nautilus prend le relais, sans attendre qu'Ariane soit relancée.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn ligne_exec(exe: &str, fichier: &str) -> String {
+    let script = r#"if [ -x "$0" ] && xdg-mime query default inode/directory | grep -qi ariane; then exec "$0"; fi; rm -f "$1"; exec nautilus --gapplication-service"#;
+    format!("/bin/sh -c {} {} {}", citer(script), citer(exe), citer(fichier))
+}
+
 #[cfg(target_os = "linux")]
 pub fn demarrer(app: tauri::AppHandle) {
     linux::demarrer(app)
@@ -33,9 +48,10 @@ pub fn demarrer(_app: tauri::AppHandle) {}
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{Demande, EN_ATTENTE};
+    use super::{ligne_exec, Demande, EN_ATTENTE};
     use gtk::gio;
     use gtk::glib::ToVariant;
+    use gtk::prelude::GtkWindowExt;
     use std::fs;
     use std::path::PathBuf;
     use tauri::{Emitter, Manager};
@@ -71,7 +87,7 @@ mod linux {
             return; // version de développement : on n'enregistre pas un exécutable temporaire
         }
         let Some(fichier) = fichier_service() else { return };
-        let contenu = format!("[D-BUS Service]\nName={NOM}\nExec={exe}\n");
+        let contenu = format!("[D-BUS Service]\nName={NOM}\nExec={}\n", ligne_exec(&exe, &fichier.to_string_lossy()));
         if fs::read_to_string(&fichier).ok().as_deref() != Some(contenu.as_str()) {
             if let Some(dossier) = fichier.parent() {
                 let _ = fs::create_dir_all(dossier);
@@ -82,7 +98,9 @@ mod linux {
 
     fn retirer_service() {
         if let Some(fichier) = fichier_service() {
-            let ce_service_est_le_notre = fs::read_to_string(&fichier).map(|t| t.contains("ariane")).unwrap_or(false);
+            // « Ariane_0.8.9_amd64.AppImage » compte aussi : on compare sans les majuscules
+            let ce_service_est_le_notre =
+                fs::read_to_string(&fichier).map(|t| t.to_lowercase().contains("ariane")).unwrap_or(false);
             if ce_service_est_le_notre {
                 let _ = fs::remove_file(fichier);
             }
@@ -97,11 +115,35 @@ mod linux {
     }
 
     pub fn demarrer(app: tauri::AppHandle) {
-        if !est_par_defaut() {
-            retirer_service();
-            return;
+        // xdg-mime est un script : on le lance à côté, pour ne pas retarder l'ouverture de la fenêtre
+        std::thread::spawn(move || {
+            if !est_par_defaut() {
+                retirer_service();
+                return;
+            }
+            installer_service();
+            // Le service D-Bus répond sur la boucle de GTK, donc depuis le fil principal
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || posseder(a));
+        });
+    }
+
+    /// Passe Ariane au premier plan. Sous Wayland, il faut le jeton d'activation transmis par
+    /// l'appli qui demande, sinon GNOME affiche « Ariane est prêt » au lieu d'amener la fenêtre.
+    fn premier_plan(app: &tauri::AppHandle, jeton: &str) {
+        let Some(fenetre) = app.get_webview_window("main") else { return };
+        let _ = fenetre.unminimize();
+        let _ = fenetre.show();
+        if let Ok(fenetre_gtk) = fenetre.gtk_window() {
+            if !jeton.is_empty() {
+                fenetre_gtk.set_startup_id(jeton);
+            }
+            fenetre_gtk.present();
         }
-        installer_service();
+        let _ = fenetre.set_focus();
+    }
+
+    fn posseder(app: tauri::AppHandle) {
         gio::bus_own_name(
             gio::BusType::Session,
             NOM,
@@ -115,18 +157,13 @@ mod linux {
                     "/org/freedesktop/FileManager1",
                     &interface,
                     move |_, _, _, _, methode, parametres, invocation| {
-                        let (uris, _): (Vec<String>, String) = parametres.get().unwrap_or_default();
+                        let (uris, jeton): (Vec<String>, String) = parametres.get().unwrap_or_default();
                         let mode = if methode == "ShowFolders" { "dossiers" } else { "elements" };
                         let chemins: Vec<String> = uris.iter().filter_map(|u| uri_vers_chemin(u)).collect();
                         if !chemins.is_empty() {
                             EN_ATTENTE.lock().unwrap().push(Demande { mode: mode.into(), chemins });
                             let _ = app.emit("demande-systeme", ());
-                            // Ariane passe au premier plan
-                            if let Some(fenetre) = app.get_webview_window("main") {
-                                let _ = fenetre.unminimize();
-                                let _ = fenetre.show();
-                                let _ = fenetre.set_focus();
-                            }
+                            premier_plan(&app, &jeton);
                         }
                         invocation.return_value(None);
                     },
@@ -137,5 +174,18 @@ mod linux {
             |_, _| {},
             |_, _| {},
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exec_avec_espaces_et_apostrophes() {
+        let l = ligne_exec("/home/s/Mes applis/l'Ariane.AppImage", "/home/s/.local/share/x.service");
+        assert!(l.starts_with("/bin/sh -c 'if [ -x \"$0\" ]"), "{l}");
+        assert!(l.ends_with(r" '/home/s/Mes applis/l'\''Ariane.AppImage' '/home/s/.local/share/x.service'"), "{l}");
+        println!("{l}");
     }
 }

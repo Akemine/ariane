@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Linux : « Afficher dans le dossier » amène bien la fenêtre d’Ariane au premier plan, et fonctionne aussi avec une AppImage rangée dans un dossier dont le nom contient des espaces.",
+      "Si Ariane est désinstallée ou n’est plus le gestionnaire de fichiers par défaut, « Afficher dans le dossier » rouvre Fichiers (Nautilus) au lieu de ne plus rien faire."
+    ]
+  },
+  {
     "version": "0.8.9",
     "date": "2026-11-03",
     "points": [

@@ -75,6 +75,8 @@ xdg-mime default <nom-du-fichier>.desktop inode/directory
 
 Pour revenir à Nautilus : `xdg-mime default org.gnome.Nautilus.desktop inode/directory`.
 
+Ariane répond alors aussi aux « Afficher dans le dossier » de VS Code, Firefox, Chrome… (service D-Bus `org.freedesktop.FileManager1`), même fermée : elle enregistre pour cela `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`. Ce fichier se vérifie à chaque lancement : si Ariane a été désinstallée ou n'est plus le gestionnaire par défaut, il s'efface et Nautilus reprend la main. Tant que Nautilus est ouvert, c'est lui qui garde ce service.
+
 L'application accepte un dossier en argument (`ariane ~/Projets`), qu'elle ouvre dans un nouvel onglet.
 
 ## Publier sur GitHub, avec mises à jour automatiques
