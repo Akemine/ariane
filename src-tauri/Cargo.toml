@@ -1,6 +1,6 @@
 [package]
 name = "ariane"
-version = "0.8.12"
+version = "0.8.13"
 description = "Ariane, explorateur de fichiers coloré, avec espaces, tags et état Git"
 edition = "2021"
 rust-version = "1.85"
