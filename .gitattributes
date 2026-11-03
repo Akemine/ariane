@@ -1,0 +1,2 @@
+# pdf.js : fichiers tiers gardés tels quels (pas de conversion des fins de ligne sous Windows)
+src/vendor/** -text
