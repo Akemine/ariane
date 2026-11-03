@@ -1,7 +1,7 @@
 [
   {
-    "version": "prochaine",
-    "date": "",
+    "version": "0.8.11",
+    "date": "2026-11-03",
     "points": [
       "Aperçu rapide : appuyez sur Espace pour voir le fichier sélectionné sans l’ouvrir — images, PDF, vidéos, sons, textes, contenu d’un dossier. ↑ ↓ pour passer au suivant, Entrée pour l’ouvrir, Espace ou Échap pour refermer.",
       "Les dossiers affichés s’actualisent tout seuls : un téléchargement qui se termine ou un document enregistré dans une autre application apparaît aussitôt."
