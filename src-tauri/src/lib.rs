@@ -3,6 +3,7 @@
 mod actions;
 mod config;
 mod fichiers;
+mod gestionnaire;
 mod git;
 mod jeux;
 mod maj;
@@ -14,6 +15,11 @@ mod systeme;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Linux : répond aux « Afficher dans le dossier » de VS Code, Firefox… (voir gestionnaire.rs)
+        .setup(|app| {
+            gestionnaire::demarrer(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             fichiers::lister_dossier,
             fichiers::decrire_chemins,
@@ -46,6 +52,7 @@ pub fn run() {
             systeme::ouvrir_terminal,
             systeme::ouvrir_vscode,
             systeme::chemin_initial,
+            gestionnaire::prendre_demandes,
             config::lire_config,
             config::ecrire_config,
         ])

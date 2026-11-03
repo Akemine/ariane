@@ -143,7 +143,7 @@ pub fn chemin_initial() -> Option<String> {
 }
 
 /// Décode les « %20 » d'une adresse file://.
-fn decoder_uri(s: &str) -> String {
+pub(crate) fn decoder_uri(s: &str) -> String {
     let octets = s.as_bytes();
     let mut sortie = Vec::with_capacity(octets.len());
     let mut i = 0;

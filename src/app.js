@@ -3008,6 +3008,38 @@ function clavier(ev) {
 
 // ———————————————————————————— Démarrage ————————————————————————————
 
+// ——— Demandes du système (Linux) : « Afficher dans le dossier » depuis VS Code, Firefox… ———
+
+async function traiterDemandesSysteme() {
+  let demandes = [];
+  try {
+    demandes = await api.prendreDemandes();
+  } catch {
+    return;
+  }
+  for (const d of demandes) {
+    const i = etat.actif;
+    if (d.mode === 'dossiers') {
+      for (const c of d.chemins) nouvelOnglet(i, c);
+      continue;
+    }
+    // Éléments : leur dossier s'ouvre dans un nouvel onglet, avec les éléments sélectionnés
+    const parDossier = new Map();
+    for (const c of d.chemins) {
+      const dossier = parentDe(c);
+      if (!parDossier.has(dossier)) parDossier.set(dossier, []);
+      parDossier.get(dossier).push(c);
+    }
+    for (const [dossier, chemins] of parDossier) {
+      nouvelOnglet(i, dossier);
+      const p = panneau(i);
+      p.selection = new Set(chemins);
+      p.ancre = chemins[0];
+      p.reveler = chemins[0];
+    }
+  }
+}
+
 async function demarrer() {
   standards = await api.standards();
   SEP = standards.separateur;
@@ -3033,6 +3065,9 @@ async function demarrer() {
   renderBarre();
   brancherEvenements();
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
+  // Demandes reçues pendant le démarrage, puis toutes les suivantes
+  traiterDemandesSysteme();
+  window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme);
   chargerJeux();
   // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
   suivrePeripheriques({ premiere: true });

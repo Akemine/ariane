@@ -1,5 +1,12 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Linux : « Afficher dans le dossier » depuis VS Code, Firefox, Chrome… ouvre désormais Ariane au lieu de Fichiers (Nautilus), avec l’élément sélectionné. Il suffit qu’Ariane soit le gestionnaire de fichiers par défaut."
+    ]
+  },
+  {
     "version": "0.8.8",
     "date": "2026-11-03",
     "points": [

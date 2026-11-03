@@ -33,6 +33,7 @@ export const api = {
   terminal: (chemin) => appeler('ouvrir_terminal', { chemin }),
   vscode: (chemin) => appeler('ouvrir_vscode', { chemin }),
   cheminInitial: () => appeler('chemin_initial'),
+  prendreDemandes: () => appeler('prendre_demandes'),
   lireConfig: () => appeler('lire_config'),
   ecrireConfig: (contenu) => appeler('ecrire_config', { contenu }),
 };
