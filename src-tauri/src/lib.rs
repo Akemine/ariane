@@ -1,6 +1,7 @@
 //! Ariane — point d'entrée de l'application Tauri.
 
 mod actions;
+mod apercu;
 mod config;
 mod fichiers;
 mod gestionnaire;
@@ -10,11 +11,16 @@ mod maj;
 mod peripheriques;
 mod recherche;
 mod reseau;
+mod surveillance;
 mod systeme;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Aperçu rapide : images, vidéos, sons et PDF servis par morceaux (voir apercu.rs)
+        .register_asynchronous_uri_scheme_protocol("apercu", |_contexte, requete, repondeur| {
+            std::thread::spawn(move || repondeur.respond(apercu::repondre(&requete)));
+        })
         // Linux : répond aux « Afficher dans le dossier » de VS Code, Firefox… (voir gestionnaire.rs)
         .setup(|app| {
             gestionnaire::demarrer(app.handle().clone());
@@ -40,6 +46,9 @@ pub fn run() {
             peripheriques::monter_peripherique,
             peripheriques::ejecter_peripherique,
             reseau::connecter_partage,
+            apercu::lire_debut,
+            apercu::lire_fichier,
+            surveillance::surveiller,
             actions::extraire_archive,
             actions::compresser,
             actions::taille_dossier,

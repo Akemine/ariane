@@ -80,6 +80,7 @@ const etat = {
   lanceurs: [], // launchers de jeux détectés (Windows)
   peripheriques: [], // clés USB, disques externes, cartes SD, CD branchés
   ejection: null, // id du périphérique en cours d'éjection
+  apercu: null, // { i, chemin, jeton } pendant l'aperçu rapide (Espace)
   silenceRetraits: 0, // jusqu'à cette heure, pas de « Périphérique retiré » (on vient d'éjecter)
   iconesApps: {}, // chemin d'un .exe → image de son icône
   version: '', // version installée
@@ -644,6 +645,44 @@ function rafraichirTout() {
   }
 }
 
+// ——— Actualisation automatique ———
+// surveillance.rs suit les dossiers affichés et prévient quand l'un d'eux change, même par une
+// autre application (téléchargement fini, fichier enregistré…). Les changements en rafale sont
+// regroupés : 250 ms après le dernier, ou au moins toutes les 1,5 s pendant une longue copie.
+
+let dossiersSuivis = null;
+const actualisations = new Map(); // panneau → { premier, minuterie }
+
+function majSurveillance() {
+  const dossiers = [...new Set(Array.from({ length: nbPanneaux() }, (_, i) => dossierCourant(i)).filter(Boolean))];
+  const cle = dossiers.join('\n');
+  if (cle === dossiersSuivis) return;
+  dossiersSuivis = cle;
+  api.surveiller(dossiers).catch(() => {});
+}
+
+function dossierModifie(chemin) {
+  for (let i = 0; i < nbPanneaux(); i++) {
+    if (dossierCourant(i) !== chemin) continue;
+    const a = actualisations.get(i) ?? { premier: Date.now() };
+    clearTimeout(a.minuterie);
+    a.minuterie = setTimeout(() => actualiserSeul(i), Math.max(0, Math.min(250, a.premier + 1500 - Date.now())));
+    actualisations.set(i, a);
+  }
+}
+
+function actualiserSeul(i) {
+  const p = panneau(i);
+  if (!p) return actualisations.delete(i);
+  // Pas pendant un renommage, une saisie du chemin, un glisser-déposer ou un lasso : on réessaie juste après
+  if (p.renommage || p.editionChemin || etat.glisse || etat.lasso) {
+    actualisations.get(i).minuterie = setTimeout(() => actualiserSeul(i), 800);
+    return;
+  }
+  actualisations.delete(i);
+  charger(i);
+}
+
 function activerPanneau(i) {
   if (i === etat.actif) return;
   etat.actif = i;
@@ -839,6 +878,8 @@ function renderPanneau(i) {
       champ.setSelectionRange(0, point > 0 && !entree?.est_dossier ? point : champ.value.length);
     }
   }
+  suivreApercu(i);
+  majSurveillance();
 }
 
 function htmlOnglets(i) {
@@ -1366,6 +1407,7 @@ function cliquerLigne(i, idx, ev) {
     p.ancre = e.chemin;
   }
   majSelection(i);
+  suivreApercu(i);
 }
 
 /** Met à jour la surbrillance sans recréer les lignes (sinon le double-clic est perdu). */
@@ -2444,6 +2486,209 @@ function fermerModale() {
   rappel?.();
 }
 
+// ———————————————————————————— Aperçu rapide (Espace) ————————————————————————————
+// Comme le Coup d'œil de macOS : Espace montre l'élément sélectionné sans lancer d'application.
+// ↑ ↓ passent à l'élément voisin, Entrée l'ouvre, Espace ou Échap referme.
+
+const EXT_IMAGE = new Set('png jpg jpeg gif webp bmp svg ico avif'.split(' '));
+const EXT_VIDEO = new Set('mp4 m4v webm mkv mov ogv'.split(' '));
+const EXT_AUDIO = new Set('mp3 wav ogg oga opus flac m4a aac'.split(' '));
+// Pas la peine de chercher du texte dans ces familles (archives, documents Office…)
+const SANS_TEXTE = new Set(['archive', 'disque', 'executable', 'doc', 'tableur', 'presentation', 'image', 'video', 'audio', 'pdf']);
+
+/** Adresse « apercu:// » d'un fichier, servie par apercu.rs. */
+const adresseApercu = (chemin) => window.__TAURI__.core.convertFileSrc(chemin, 'apercu');
+
+function elementApercu(i) {
+  const p = panneau(i);
+  return p.visibles.find((e) => e.chemin === p.ancre && p.selection.has(e.chemin)) ?? p.visibles.find((e) => p.selection.has(e.chemin));
+}
+
+function basculerApercu(i) {
+  if (etat.apercu) return fermerApercu();
+  const e = elementApercu(i);
+  if (!e) return false;
+  afficherApercu(i, e);
+}
+
+function fermerApercu() {
+  if (!etat.apercu) return;
+  etat.apercu.pdf?.destroy();
+  etat.apercu = null;
+  const zone = $('#apercu');
+  zone.innerHTML = '';
+  zone.hidden = true;
+}
+
+function detailsApercu(e) {
+  const quand = e.modifie != null ? ` · modifié ${dateRelative(e.modifie)}` : '';
+  return `${e.est_dossier ? elements(e.nb_elements) : taille(e.taille)}${quand}`;
+}
+
+function afficherApercu(i, e) {
+  etat.apercu?.pdf?.destroy();
+  const jeton = (etat.apercu?.jeton ?? 0) + 1;
+  etat.apercu = { i, chemin: e.chemin, jeton };
+  const encore = () => etat.apercu?.jeton === jeton;
+  const zone = $('#apercu');
+  zone.hidden = false;
+  zone.innerHTML = `<div class="apercu-voile">
+    <div class="apercu-fenetre" role="dialog" aria-label="Aperçu de ${esc(e.nom)}">
+      <header class="apercu-tete">
+        <span class="apercu-icone">${icone(e)}</span>
+        <div class="apercu-titre"><strong title="${esc(e.chemin)}">${esc(e.nom)}</strong><span class="apercu-details">${detailsApercu(e)}</span></div>
+        <button type="button" class="bouton" data-apercu="ouvrir">${e.est_dossier ? 'Ouvrir le dossier' : 'Ouvrir'}</button>
+        <button type="button" class="icone-btn" data-apercu="fermer" aria-label="Fermer l’aperçu" title="Fermer (Espace)">${ic('x')}</button>
+      </header>
+      <div class="apercu-corps"><p class="apercu-vide">Chargement…</p></div>
+      <footer class="apercu-pied">↑ ↓ élément voisin · Entrée ouvrir · Espace ou Échap fermer</footer>
+    </div></div>`;
+  const corps = zone.querySelector('.apercu-corps');
+  remplirApercu(e, corps, encore).catch((err) => {
+    if (encore()) corps.innerHTML = sansApercu(e, String(err?.message ?? err));
+  });
+}
+
+function sansApercu(e, raison = 'Pas d’aperçu pour ce type de fichier.') {
+  return `<div class="apercu-vide"><span class="apercu-grande-icone">${icone(e)}</span><p>${esc(raison)}</p><p class="apercu-astuce">Entrée pour l’ouvrir avec l’application habituelle.</p></div>`;
+}
+
+async function remplirApercu(e, corps, encore) {
+  const ext = e.est_dossier ? '' : extensionDe(e.nom);
+  const adresse = adresseApercu(e.chemin);
+  if (e.est_dossier) {
+    const c = await api.lister(e.chemin);
+    if (!encore()) return;
+    const liste = c.entrees
+      .filter((x) => config.afficherCaches || !x.cache)
+      .sort((a, b) => (a.est_dossier !== b.est_dossier ? (a.est_dossier ? -1 : 1) : a.nom.localeCompare(b.nom, 'fr', { numeric: true })));
+    corps.innerHTML = liste.length
+      ? `<ul class="apercu-liste">${liste.slice(0, 200).map((x) => `<li>${icone(x)}<span>${esc(x.nom)}</span></li>`).join('')}</ul>${liste.length > 200 ? `<p class="apercu-note">… et ${liste.length - 200} autres</p>` : ''}`
+      : '<p class="apercu-vide">Dossier vide</p>';
+  } else if (EXT_IMAGE.has(ext)) {
+    const img = new Image();
+    img.alt = e.nom;
+    img.onload = () => {
+      if (encore() && img.naturalWidth) $('#apercu .apercu-details').textContent = `${detailsApercu(e)} · ${img.naturalWidth} × ${img.naturalHeight}`;
+    };
+    img.onerror = () => encore() && (corps.innerHTML = sansApercu(e, 'Cette image ne peut pas être affichée ici.'));
+    img.src = adresse;
+    corps.replaceChildren(img);
+  } else if (EXT_VIDEO.has(ext) || EXT_AUDIO.has(ext)) {
+    const media = document.createElement(EXT_VIDEO.has(ext) ? 'video' : 'audio');
+    media.controls = true;
+    media.preload = 'metadata';
+    // Sous Fedora, certains formats (H.264…) demandent des codecs GStreamer en plus
+    media.onerror = () => encore() && (corps.innerHTML = sansApercu(e, 'Ce format ne peut pas être lu ici.'));
+    media.src = adresse;
+    if (media.tagName === 'AUDIO') {
+      const bloc = document.createElement('div');
+      bloc.className = 'apercu-vide';
+      bloc.innerHTML = `<span class="apercu-grande-icone">${icone(e)}</span>`;
+      bloc.append(media);
+      corps.replaceChildren(bloc);
+    } else corps.replaceChildren(media);
+  } else if (ext === 'pdf') {
+    // Windows : le lecteur PDF d'Edge (WebView2). Linux : pdf.js, WebKitGTK n'en a pas.
+    if (sousWindows()) corps.innerHTML = `<iframe src="${esc(adresse)}" title="${esc(e.nom)}"></iframe>`;
+    else await apercuPdf(e, corps, encore);
+  } else if (SANS_TEXTE.has(typeFichier(ext).famille)) {
+    corps.innerHTML = sansApercu(e);
+  } else {
+    const { texte, tronque } = await api.lireDebut(e.chemin);
+    if (!encore()) return;
+    if (texte == null) return (corps.innerHTML = sansApercu(e));
+    corps.innerHTML = `<pre class="apercu-texte">${esc(texte)}</pre>${tronque ? '<p class="apercu-note">Début du fichier seulement (256 Ko) : Entrée pour l’ouvrir en entier.</p>' : ''}`;
+  }
+}
+
+let pdfjs = null;
+const PAGES_PDF = 30;
+
+async function apercuPdf(e, corps, encore) {
+  if (!pdfjs) {
+    pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+  }
+  const donnees = new Uint8Array(await api.lireFichier(e.chemin));
+  if (!encore()) return;
+  const doc = await pdfjs.getDocument({ data: donnees, isEvalSupported: false }).promise;
+  if (!encore()) return doc.destroy();
+  etat.apercu.pdf = doc;
+  const pages = document.createElement('div');
+  pages.className = 'apercu-pdf';
+  corps.replaceChildren(pages);
+  const largeur = Math.min(900, corps.clientWidth - 48);
+  const n = Math.min(doc.numPages, PAGES_PDF);
+  for (let k = 1; k <= n && encore(); k++) {
+    const page = await doc.getPage(k);
+    const echelle = largeur / page.getViewport({ scale: 1 }).width;
+    const vue = page.getViewport({ scale: echelle * devicePixelRatio });
+    const toile = document.createElement('canvas');
+    toile.width = Math.floor(vue.width);
+    toile.height = Math.floor(vue.height);
+    toile.style.width = `${Math.floor(vue.width / devicePixelRatio)}px`;
+    pages.append(toile);
+    await page.render({ canvasContext: toile.getContext('2d'), viewport: vue }).promise;
+  }
+  if (encore() && doc.numPages > n) {
+    pages.insertAdjacentHTML('beforeend', `<p class="apercu-note">${pluriel(doc.numPages - n, 'autre page', 'autres pages')} : Entrée pour ouvrir le PDF en entier.</p>`);
+  }
+}
+
+/** Touches pendant l'aperçu ; true quand la touche a été prise. */
+function clavierApercu(ev, touche) {
+  const { i } = etat.apercu;
+  const dansMedia = ev.target.closest?.('video, audio');
+  if (touche === 'Escape' || (touche === ' ' && !dansMedia)) {
+    fermerApercu();
+    return true;
+  }
+  if (touche === 'ArrowUp' || touche === 'ArrowDown') {
+    deplacerSelection(i, touche === 'ArrowUp' ? -1 : 1, false);
+    const e = elementApercu(i);
+    if (e && e.chemin !== etat.apercu?.chemin) afficherApercu(i, e);
+    return true;
+  }
+  if (touche === 'Enter') {
+    const e = panneau(i).visibles.find((x) => x.chemin === etat.apercu.chemin);
+    fermerApercu();
+    if (e) ouvrirEntree(i, e);
+    return true;
+  }
+  const corps = $('#apercu .apercu-corps');
+  const defilement = { PageDown: 0.9, PageUp: -0.9, Home: -1e6, End: 1e6 }[touche];
+  if (corps && defilement) {
+    corps.scrollBy({ top: defilement * corps.clientHeight });
+    return true;
+  }
+  return false;
+}
+
+function brancherApercu() {
+  $('#apercu').addEventListener('click', (ev) => {
+    if (!etat.apercu) return;
+    // Un clic à côté de la fenêtre la ferme
+    if (ev.target.classList.contains('apercu-voile')) return fermerApercu();
+    const action = ev.target.closest('[data-apercu]')?.dataset.apercu;
+    if (action === 'fermer') return fermerApercu();
+    if (action === 'ouvrir') {
+      const { i, chemin } = etat.apercu;
+      const e = panneau(i).visibles.find((x) => x.chemin === chemin);
+      fermerApercu();
+      if (e) ouvrirEntree(i, e);
+    }
+  });
+}
+
+/** Un clic sur une autre ligne du même panneau change l'aperçu ; s'il disparaît (supprimé, autre dossier), il se ferme. */
+function suivreApercu(i) {
+  if (etat.apercu?.i !== i) return;
+  const e = elementApercu(i);
+  if (!e || !panneau(i).visibles.some((x) => x.chemin === etat.apercu.chemin)) return fermerApercu();
+  if (e.chemin !== etat.apercu.chemin) afficherApercu(i, e);
+}
+
 // ———————————————————————————— Glisser-déposer ————————————————————————————
 // Déposer = couper / coller : l'élément est déplacé, sur une autre ligne, un autre panneau,
 // un dossier, une épingle ou une tuile de la barre latérale.
@@ -2941,6 +3186,7 @@ function brancherEvenements() {
     appliquerTailles(); // la barre ne dépasse pas 40 % d'une fenêtre qui rétrécit
   });
   brancherSeparateurBarre();
+  brancherApercu();
 
   // Retour dans la fenêtre : on actualise (des fichiers ont pu changer ailleurs)
   window.addEventListener('focus', () => {
@@ -2958,6 +3204,7 @@ function clavier(ev) {
   if (touche === 'Escape') {
     if (etat.menu) return fermerMenu();
     if ($('#modale').innerHTML) return fermerModale();
+    if (etat.apercu) return fermerApercu();
     if (etat.colonnesOuvert != null) {
       const i = etat.colonnesOuvert;
       etat.colonnesOuvert = null;
@@ -2965,10 +3212,13 @@ function clavier(ev) {
     }
   }
   if (ev.target.matches('input, textarea, select') || $('#modale').innerHTML) return;
+  if (etat.apercu && clavierApercu(ev, touche)) return ev.preventDefault();
 
   const i = etat.actif;
   const p = panneau(i);
   const raccourcis = {
+    // Espace sur un bouton garde son rôle (l'activer)
+    ' ': () => (ev.target.closest('button') ? false : basculerApercu(i)),
     c: () => ctrl && mettreDansPressePapiers(i, 'copier'),
     x: () => ctrl && mettreDansPressePapiers(i, 'couper'),
     v: () => ctrl && collerIci(i),
@@ -3067,6 +3317,7 @@ async function demarrer() {
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
   // On écoute d'abord, puis on prend celles reçues pendant le démarrage : aucune ne se perd entre les deux
   window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme).then(traiterDemandesSysteme, traiterDemandesSysteme);
+  window.__TAURI__.event.listen('dossier-modifie', ({ payload }) => dossierModifie(payload));
   chargerJeux();
   // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
   suivrePeripheriques({ premiere: true });

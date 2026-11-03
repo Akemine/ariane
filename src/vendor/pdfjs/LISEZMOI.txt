@@ -1,0 +1,2 @@
+pdf.js 4.10.38 (pdfjs-dist, build « legacy »), Mozilla, licence Apache 2.0 : voir LICENSE.
+Aperçu des PDF sous Linux, où WebKitGTK n’a pas de lecteur PDF intégré.

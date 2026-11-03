@@ -544,3 +544,41 @@ body.redimension, body.redimension * { cursor: col-resize !important; -webkit-us
 .modale label.conflit-tous { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--texte-2); cursor: pointer; }
 .conflit-tous input { width: 17px; height: 17px; margin: 0; accent-color: var(--espace); }
 .conflit-astuce { margin: -6px 0 0; font-size: 12px; color: var(--discret); text-align: right; }
+
+/* ———————————— Aperçu rapide (Espace) ———————————— */
+
+#apercu[hidden] { display: none; }
+.apercu-voile { position: fixed; inset: 0; z-index: 250; background: rgba(28, 26, 38, .32); display: grid; place-items: center; animation: apercu-voile .12s ease-out; }
+:root[data-theme="sombre"] .apercu-voile { background: rgba(0, 0, 0, .55); }
+.apercu-fenetre {
+  width: min(1100px, calc(100vw - 64px)); height: calc(100vh - 64px);
+  background: var(--carte); border-radius: 18px; box-shadow: var(--ombre-menu);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: apercu-arrivee .16s cubic-bezier(.2, .9, .3, 1.1);
+}
+@keyframes apercu-voile { from { opacity: 0; } }
+@keyframes apercu-arrivee { from { opacity: 0; transform: scale(.97); } }
+@media (prefers-reduced-motion: reduce) { .apercu-voile, .apercu-fenetre { animation: none; } }
+.apercu-tete { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 1px solid var(--trait); }
+.apercu-icone { flex: none; display: grid; place-items: center; }
+.apercu-titre { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.apercu-titre strong { font-size: 15px; color: var(--texte); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apercu-details { font-size: 12.5px; color: var(--discret); font-variant-numeric: tabular-nums; }
+.apercu-tete .bouton { height: 34px; }
+.apercu-corps { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; background: var(--survol); }
+.apercu-corps > img, .apercu-corps > video { max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
+.apercu-corps > img { background: repeating-conic-gradient(var(--neutre) 0% 25%, transparent 0% 50%) 0 0 / 20px 20px; }
+.apercu-corps > iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+.apercu-texte { align-self: flex-start; width: 100%; box-sizing: border-box; margin: 0; padding: 18px 22px; font: 13px/1.55 var(--mono); color: var(--texte-2); white-space: pre; tab-size: 4; }
+.apercu-pdf { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px 0; }
+.apercu-pdf canvas { background: #fff; border-radius: 3px; box-shadow: var(--ombre-carte); }
+.apercu-liste { align-self: flex-start; width: 100%; margin: 0; padding: 14px 18px; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; }
+.apercu-liste li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 5px 6px; font-size: 13.5px; color: var(--texte-2); }
+.apercu-liste li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apercu-vide { margin: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; color: var(--texte-3); font-size: 14px; }
+.apercu-vide p { margin: 0; }
+.apercu-grande-icone svg { width: 72px; height: 84px; }
+.apercu-astuce { font-size: 12.5px; color: var(--discret); }
+.apercu-vide audio { width: min(420px, 80vw); }
+.apercu-note { margin: 0; padding: 10px 22px 18px; font-size: 12.5px; color: var(--discret); text-align: center; width: 100%; box-sizing: border-box; }
+.apercu-pied { padding: 8px 18px; border-top: 1px solid var(--trait); font-size: 12px; color: var(--muet); }

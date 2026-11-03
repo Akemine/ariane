@@ -28,6 +28,8 @@ tauri-plugin-updater = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
+# Actualisation automatique : changements dans les dossiers affichés (inotify, ReadDirectoryChangesW)
+notify = "8"
 
 [profile.release]
 codegen-units = 1

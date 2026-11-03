@@ -334,7 +334,7 @@ fn apercu(p: &Path) -> Option<Apercu> {
 }
 
 /// Même chemin, aux différences d'écriture près (casse et séparateurs sous Windows).
-fn meme_chemin(a: &Path, b: &Path) -> bool {
+pub(crate) fn meme_chemin(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
         let t = |p: &Path| texte(p).replace('/', "\\").trim_end_matches('\\').to_lowercase();
         t(a) == t(b)

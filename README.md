@@ -21,6 +21,8 @@ Ariane est un explorateur de fichiers coloré pour Linux (Fedora en priorité) e
 - **Zones redimensionnables** : glisser la poignée entre la barre latérale et les panneaux (de 200 à 440 px, jamais plus de 40 % de la fenêtre), ou celle entre les deux panneaux (300 px minimum chacun). Double-clic : la barre s'ajuste au plus long nom, les panneaux reviennent à moitié-moitié. Au clavier : ← →.
 - **Actions selon le type** au clic droit : extraire une archive (.zip, .tar, .tar.gz), compresser en .zip, dupliquer, calculer la taille d'un dossier, copier le contenu d'un fichier texte, exécuter en administrateur (Windows), ouvrir le dépôt Git dans le navigateur.
 - **Clic droit** sur un élément ou dans le vide pour tout faire : créer un dossier ou un fichier, renommer, corbeille, ouvrir un terminal ou VS Code, copier le chemin…
+- **Aperçu rapide** : Espace montre l'élément sélectionné sans ouvrir d'application, comme le Coup d'œil de macOS : images, PDF (lecteur d'Edge sous Windows, pdf.js sous Linux), vidéos, sons, textes et code, contenu d'un dossier. ↑ ↓ passent à l'élément voisin, Entrée l'ouvre, Espace ou Échap referme.
+- **Actualisation automatique** : un fichier créé, renommé ou supprimé par une autre application (téléchargement fini, document enregistré…) apparaît tout seul dans la liste.
 - **Fichiers cachés** affichables (Ctrl+H), corbeille native du système.
 
 ## Lancer en développement
@@ -104,6 +106,7 @@ Les applications installées vérifient au démarrage s'il existe une version pl
 | Action | Souris | Clavier |
 |---|---|---|
 | Ouvrir | Double-clic | Entrée |
+| Aperçu rapide | | Espace (↑ ↓ pour passer au voisin) |
 | Ouvrir un dossier dans un onglet | Clic molette | |
 | Sélection multiple | Ctrl+clic, Maj+clic, ou tracer une zone depuis un endroit libre | Ctrl+A, Maj+↑/↓ |
 | Couper / copier / coller | Clic droit, ou glisser-déposer pour déplacer | Ctrl+X / Ctrl+C / Ctrl+V |
@@ -140,12 +143,15 @@ src/                  Interface (servie telle quelle, sans compilation)
   format.js           Tailles, dates, couleurs par type de fichier
   icones.js           Icônes SVG
   polices/            Plus Jakarta Sans et JetBrains Mono (licence OFL), embarquées
+  vendor/pdfjs/       pdf.js (Mozilla, Apache 2.0) : aperçu des PDF sous Linux
 
 src-tauri/            Backend Rust
   src/fichiers.rs     Lister, créer, renommer, copier, déplacer, corbeille
   src/git.rs          État Git (via la commande git)
   src/systeme.rs      Ouvrir un fichier, un terminal, VS Code
   src/peripheriques.rs  Clés USB, disques externes : détecter, monter, éjecter
+  src/apercu.rs       Aperçu rapide : adresse apercu://, début des textes
+  src/surveillance.rs Actualisation automatique des dossiers affichés
   src/reseau.rs       Dossiers réseau : connexion (Windows), montage par GNOME (Linux)
   src/config.rs       Lecture / écriture des réglages
   tauri.conf.json     Fenêtre, paquets rpm / deb / msi
@@ -158,6 +164,6 @@ Tests du backend : `cd src-tauri && cargo test`.
 - **Dossiers en conflit** : « Remplacer » remplace le dossier entier ; il n'y a pas encore de fusion du contenu des deux dossiers.
 - **Presse-papiers interne** : un Ctrl+C dans Ariane ne se colle pas encore dans Nautilus ou l’Explorateur Windows, et inversement.
 - **Glisser-déposer avec les autres applications** (vers Firefox, VS Code…) pas encore géré.
-- **Pas de surveillance automatique** du disque : la liste s'actualise après chaque action, au retour dans la fenêtre et avec F5.
+- **Actualisation automatique sur les partages réseau sous Linux** : les changements faits depuis un autre PC n'arrivent pas (gvfs ne les signale pas) ; F5 ou le retour dans la fenêtre les affichent.
 - **Pas de barre de progression** pour les grosses copies (l'interface reste utilisable pendant la copie).
 - Le **tableau de bord**, la **vue d'analyse de l'espace disque** et un **thème sombre** sont les prochaines étapes.
