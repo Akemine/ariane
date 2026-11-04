@@ -58,11 +58,12 @@ dependencies = [
 
 [[package]]
 name = "ariane"
-version = "0.8.15"
+version = "0.8.17"
 dependencies = [
  "base64 0.22.1",
  "dirs",
  "flate2",
+ "gdkwayland-sys",
  "gtk",
  "notify",
  "open",

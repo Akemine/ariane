@@ -1,5 +1,12 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Fedora : « Afficher dans le dossier » (téléchargements de Chrome, VS Code…) amène Ariane au premier plan, au lieu de la notification « Ariane est prêt »."
+    ]
+  },
+  {
     "version": "0.8.17",
     "date": "2026-11-04",
     "points": [

@@ -136,11 +136,31 @@ mod linux {
         let _ = fenetre.show();
         if let Ok(fenetre_gtk) = fenetre.gtk_window() {
             if !jeton.is_empty() {
-                fenetre_gtk.set_startup_id(jeton);
+                donner_jeton(&fenetre_gtk, jeton);
             }
             fenetre_gtk.present();
         }
-        let _ = fenetre.set_focus();
+        // Sans jeton, on demande quand même (X11, ou GNOME qui l'accepte parfois) ; avec un jeton,
+        // une seconde demande sans lui pourrait passer après et être refusée
+        if jeton.is_empty() {
+            let _ = fenetre.set_focus();
+        }
+    }
+
+    /// Wayland : le jeton d'activation se donne à l'écran juste avant present(), qui l'utilise
+    /// (xdg-activation) ; set_startup_id ne le transmet pas. X11 : set_startup_id suffit.
+    fn donner_jeton(fenetre: &gtk::ApplicationWindow, jeton: &str) {
+        use gtk::glib::prelude::*;
+        use gtk::glib::translate::ToGlibPtr;
+        use gtk::prelude::WidgetExt;
+        let ecran = fenetre.display();
+        if ecran.type_().name() == "GdkWaylandDisplay" {
+            let Ok(texte) = std::ffi::CString::new(jeton) else { return };
+            let brut: *mut gtk::gdk::ffi::GdkDisplay = ecran.to_glib_none().0;
+            unsafe { gdk_wayland_sys::gdk_wayland_display_set_startup_notification_id(brut as *mut _, texte.as_ptr()) };
+        } else {
+            fenetre.set_startup_id(jeton);
+        }
     }
 
     fn posseder(app: tauri::AppHandle) {
