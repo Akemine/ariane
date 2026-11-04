@@ -655,13 +655,29 @@ function rafraichirTout() {
 
 let dossiersSuivis = null;
 const actualisations = new Map(); // panneau → { premier, minuterie }
+// Une seule demande à la fois, la plus récente : deux demandes envoyées coup sur coup
+// (navigation rapide) pourraient sinon se croiser et laisser Rust suivre l'ancien dossier.
+let surveillanceVoulue = null;
+let surveillanceEnvoi = false;
 
 function majSurveillance() {
   const dossiers = [...new Set(Array.from({ length: nbPanneaux() }, (_, i) => dossierCourant(i)).filter(Boolean))];
   const cle = dossiers.join('\n');
   if (cle === dossiersSuivis) return;
   dossiersSuivis = cle;
-  api.surveiller(dossiers).catch(() => {});
+  surveillanceVoulue = dossiers;
+  envoyerSurveillance();
+}
+
+async function envoyerSurveillance() {
+  if (surveillanceEnvoi) return; // la boucle en cours enverra la dernière demande
+  surveillanceEnvoi = true;
+  while (surveillanceVoulue) {
+    const dossiers = surveillanceVoulue;
+    surveillanceVoulue = null;
+    await api.surveiller(dossiers).catch(() => {});
+  }
+  surveillanceEnvoi = false;
 }
 
 function dossierModifie(chemin) {

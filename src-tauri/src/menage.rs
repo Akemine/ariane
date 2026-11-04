@@ -5,7 +5,7 @@
 
 use crate::fichiers::en_tache;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::Read;
@@ -55,7 +55,10 @@ const DOSSIERS_SYSTEME: &[&str] = &[
 ];
 const INTERROMPUS: &[&str] = &["crdownload", "part", "partial", "download"];
 const INSTALLATEURS: &[&str] = &["exe", "msi", "rpm", "deb", "appimage", "dmg", "iso", "pkg", "flatpakref"];
-const ARCHIVES: &[&str] = &[".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".tar", ".zip", ".7z", ".rar"];
+/// Archives dont on sait lire la liste des fichiers (pas 7z, rar, tar.xz : jamais proposées).
+const ARCHIVES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip"];
+/// Au-delà, lister un .tar.gz (qu'il faut décompresser pour le parcourir) serait trop long.
+const TAR_MAX: u64 = 1024 * 1024 * 1024;
 
 /// OneDrive, Dropbox… (Windows) : fichier « en ligne seulement ». Le lire le téléchargerait, et il ne
 /// prend pas de place sur le disque : il n'est ni comparé pour les doublons, ni compté comme gros.
@@ -95,7 +98,59 @@ fn sans_archive(nom: &str) -> Option<&str> {
 }
 
 /// Catégorie d'un fichier, ou None s'il n'a rien de suspect.
-fn categorie_fichier(nom: &str, taille: u64, age: f64, dans_telechargements: bool, dossiers_voisins: &HashSet<String>) -> Option<&'static str> {
+/// Les fichiers d'une archive (chemin à l'intérieur, taille). Un .zip n'est pas décompressé : sa
+/// table des matières suffit. None : illisible, vide, trop grosse, ou chemin qui sortirait du dossier.
+fn contenu_archive(chemin: &Path, taille: u64) -> Option<Vec<(PathBuf, u64)>> {
+    use std::path::Component;
+    let min = chemin.to_string_lossy().to_lowercase();
+    let fichier = File::open(chemin).ok()?;
+    let mut liste = Vec::new();
+    if min.ends_with(".zip") {
+        let mut zip = zip::ZipArchive::new(fichier).ok()?;
+        for k in 0..zip.len() {
+            let e = zip.by_index_raw(k).ok()?;
+            if !e.is_dir() {
+                liste.push((e.enclosed_name()?, e.size()));
+            }
+        }
+    } else if taille <= TAR_MAX {
+        let lecteur: Box<dyn Read> = if min.ends_with(".tar") { Box::new(fichier) } else { Box::new(flate2::read::GzDecoder::new(fichier)) };
+        let mut tar = tar::Archive::new(lecteur);
+        for e in tar.entries().ok()? {
+            let e = e.ok()?;
+            if !e.header().entry_type().is_file() {
+                continue;
+            }
+            let p = e.path().ok()?.into_owned();
+            if p.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) {
+                return None;
+            }
+            liste.push((p, e.size()));
+        }
+    } else {
+        return None;
+    }
+    (!liste.is_empty()).then_some(liste)
+}
+
+/// L'archive a-t-elle vraiment été extraite dans `dossier` ? Chacun de ses fichiers doit s'y
+/// retrouver avec la même taille. Une archive qui contient déjà « plans/… » peut avoir été extraite
+/// dans plans/ (« Extraire ici ») ou dans plans/plans/ (« Extraire tout » de Windows) : les deux comptent.
+fn deja_extraite(archive: &Path, taille: u64, dossier: &Path) -> bool {
+    let Some(contenu) = contenu_archive(archive, taille) else { return false };
+    let nom = dossier.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    contenu.iter().all(|(dedans, octets)| {
+        let mut essais = vec![dossier.join(dedans)];
+        let mut morceaux = dedans.components();
+        if morceaux.next().is_some_and(|premier| premier.as_os_str().to_string_lossy().to_lowercase() == nom) {
+            essais.push(dossier.join(morceaux.as_path()));
+        }
+        essais.iter().any(|p| fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() == *octets))
+    })
+}
+
+/// `extraite(base)` : l'archive a-t-elle déjà été extraite dans le dossier « base » voisin ?
+fn categorie_fichier(nom: &str, taille: u64, age: f64, dans_telechargements: bool, extraite: &dyn Fn(&str) -> bool) -> Option<&'static str> {
     let min = nom.to_lowercase();
     let ext = min.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
     // Restes d'un téléchargement ou d'un document ouvert : un jour suffit
@@ -112,7 +167,7 @@ fn categorie_fichier(nom: &str, taille: u64, age: f64, dans_telechargements: boo
     if dans_telechargements && INSTALLATEURS.contains(&ext) && age > 30.0 {
         return Some("installateur");
     }
-    if sans_archive(nom).is_some_and(|base| dossiers_voisins.contains(&base.to_lowercase())) {
+    if sans_archive(nom).is_some_and(extraite) {
         return Some("archive");
     }
     if taille > GROS && age > 365.0 {
@@ -204,11 +259,11 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
     'parcours: while let Some(dossier) = pile.pop() {
         let Ok(lecture) = fs::read_dir(&dossier) else { continue };
         let entrees: Vec<_> = lecture.flatten().collect();
-        // Noms des sous-dossiers, pour reconnaître une archive déjà extraite à côté
-        let voisins: HashSet<String> = entrees
+        // Sous-dossiers (par nom en minuscules), pour reconnaître une archive déjà extraite à côté
+        let voisins: HashMap<String, PathBuf> = entrees
             .iter()
             .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-            .map(|e| e.file_name().to_string_lossy().to_lowercase())
+            .map(|e| (e.file_name().to_string_lossy().to_lowercase(), e.path()))
             .collect();
         let dans_telechargements = telechargements.is_some_and(|t| dossier.starts_with(t));
         for e in entrees {
@@ -252,7 +307,9 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
                 continue;
             }
             let en_ligne = en_ligne_seulement(&meta);
-            let categorie = categorie_fichier(&nom, taille, age, dans_telechargements, &voisins).filter(|c| !(en_ligne && *c == "gros"));
+            // Une archive « en ligne seulement » n'est pas ouverte : la lire la téléchargerait
+            let extraite = |base: &str| !en_ligne && voisins.get(&base.to_lowercase()).is_some_and(|d| deja_extraite(&chemin, taille, d));
+            let categorie = categorie_fichier(&nom, taille, age, dans_telechargements, &extraite).filter(|c| !(en_ligne && *c == "gros"));
             if let Some(categorie) = categorie {
                 suggestions.push(Suggestion { chemin: chemin.to_string_lossy().into_owned(), nom, est_dossier: false, taille, modifie: millisecondes(&meta), categorie, original: None });
             } else if taille >= DOUBLON_MIN && age > RECENT_JOURS && !nom.starts_with('.') && !en_ligne {
@@ -335,10 +392,32 @@ pub async fn ressortir_de_la_corbeille(chemins: Vec<String>) -> Result<(), Strin
 mod tests {
     use super::*;
 
+    fn zip(fichiers: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (nom, octets) in fichiers {
+            z.start_file(*nom, zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored)).unwrap();
+            z.write_all(octets).unwrap();
+        }
+        z.finish().unwrap().into_inner()
+    }
+
+    fn targz(fichiers: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut b = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+        for (nom, octets) in fichiers {
+            let mut entete = tar::Header::new_gnu();
+            entete.set_size(octets.len() as u64);
+            entete.set_mode(0o644);
+            entete.set_cksum();
+            b.append_data(&mut entete, nom, *octets).unwrap();
+        }
+        b.into_inner().unwrap().finish().unwrap()
+    }
+
     #[test]
     fn categories() {
-        let rien = HashSet::new();
-        let plans: HashSet<String> = ["plans".to_string()].into();
+        let rien = |_: &str| false;
+        let plans = |b: &str| b.eq_ignore_ascii_case("plans");
         assert_eq!(categorie_fichier("film.mp4.crdownload", 10, 3.0, false, &rien), Some("interrompu"));
         assert_eq!(categorie_fichier("film.mp4.part", 10, 0.5, false, &rien), None);
         assert_eq!(categorie_fichier("~$devis.docx", 10, 2.0, false, &rien), Some("temporaire"));
@@ -347,6 +426,8 @@ mod tests {
         assert_eq!(categorie_fichier("setup.exe", 10, 40.0, false, &rien), None);
         assert_eq!(categorie_fichier("Plans.tar.gz", 10, 10.0, false, &plans), Some("archive"));
         assert_eq!(categorie_fichier("plans.zip", 10, 3.0, false, &plans), None);
+        // 7z, rar : contenu illisible, donc jamais proposés
+        assert_eq!(categorie_fichier("plans.7z", 10, 10.0, false, &plans), None);
         assert_eq!(categorie_fichier("film.mkv", 2 * GROS, 400.0, false, &rien), Some("gros"));
         assert_eq!(categorie_fichier("facture.pdf", 10, 200.0, true, &rien), Some("vieux"));
         assert_eq!(categorie_fichier("facture.pdf", 10, 200.0, false, &rien), None);
@@ -372,8 +453,21 @@ mod tests {
         ecrire("dl/recent.exe", b"x", 2);
         ecrire("film.mp4.crdownload", b"x", 3);
         ecrire("~$devis.docx", b"x", 2);
-        ecrire("plans.zip", b"x", 10);
+        // Archives : proposées seulement si tout leur contenu est dans le dossier voisin, même taille
+        ecrire("plans.zip", &zip(&[("plan.pdf", b"x")]), 10);
         ecrire("plans/plan.pdf", b"x", 10);
+        ecrire("partiel.zip", &zip(&[("a.txt", b"a"), ("b.txt", b"b")]), 10);
+        ecrire("partiel/a.txt", b"a", 10);
+        ecrire("autre.zip", &zip(&[("p.jpg", b"abc")]), 10);
+        ecrire("autre/p.jpg", b"abcde", 10);
+        ecrire("code.tar.gz", &targz(&[("code/main.rs", b"fn")]), 10); // « Extraire ici »
+        ecrire("code/main.rs", b"fn", 10);
+        ecrire("double.zip", &zip(&[("double/x.txt", b"x")]), 10); // « Extraire tout » de Windows
+        ecrire("double/double/x.txt", b"x", 10);
+        ecrire("faux.zip", b"pas une archive", 10);
+        ecrire("faux/f.txt", b"x", 10);
+        ecrire("vieux.7z", b"x", 10);
+        ecrire("vieux/v.txt", b"x", 10);
         ecrire("a/photo.jpg", &photo, 30);
         ecrire("b/photo copie.jpg", &photo, 20);
         ecrire("b/presque.jpg", &autre, 20);
@@ -398,7 +492,9 @@ mod tests {
             vus,
             [
                 ("b/photo copie.jpg".to_string(), "doublon"),
+                ("code.tar.gz".into(), "archive"),
                 ("dl/setup.exe".into(), "installateur"),
+                ("double.zip".into(), "archive"),
                 ("epingle/~$vieux.docx".into(), "temporaire"),
                 ("film.mp4.crdownload".into(), "interrompu"),
                 ("plans.zip".into(), "archive"),

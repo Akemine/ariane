@@ -1,5 +1,13 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Ménage : une archive n’est proposée que si elle a vraiment été extraite. Chacun de ses fichiers doit se trouver dans le dossier du même nom, avec la même taille ; une extraction partielle ou un dossier simplement homonyme ne suffit plus.",
+      "L’actualisation automatique suit toujours le bon dossier, même quand on navigue très vite."
+    ]
+  },
+  {
     "version": "0.8.15",
     "date": "2026-11-04",
     "points": [
