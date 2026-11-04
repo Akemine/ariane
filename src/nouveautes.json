@@ -1,7 +1,7 @@
 [
   {
-    "version": "prochaine",
-    "date": "",
+    "version": "0.8.15",
+    "date": "2026-11-04",
     "points": [
       "Windows : OneDrive apparaît dans la barre latérale, avec son icône, dès qu’il est installé (votre compte perso, et chaque compte professionnel « OneDrive - Entreprise »).",
       "Sous Windows 11, une jauge montre son remplissage, comme dans l’Explorateur (« 1,6 Go utilisés sur 5 Go » au survol). Elle passe au rouge au-delà de 90 %.",
