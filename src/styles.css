@@ -636,3 +636,20 @@ body.redimension, body.redimension * { cursor: col-resize !important; -webkit-us
 .tiroir.ouvert { grid-template-rows: 1fr; }
 .tiroir > div { min-height: 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .tiroir, .titre-tiroir svg { transition: none; } }
+
+/* ———————————— Réglages ———————————— */
+
+.modale.reglages { width: 560px; gap: 14px; }
+.reglage { display: flex; flex-direction: column; gap: 10px; }
+.reglage h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--texte); }
+.reglage-aide { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--texte-3); }
+.reglage-etats { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.reglage-etats li { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border: 1.5px solid var(--bord-menu); border-radius: 10px; }
+.reglage-etats li svg { flex: none; margin-top: 2px; }
+.reglage-etats li.ok svg { color: #16A34A; }
+.reglage-etats li.non svg { color: var(--muet); }
+.reglage-etats li div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.reglage-etats strong { font-size: 13.5px; color: var(--texte-2); }
+.reglage-etats span { font-size: 12.5px; color: var(--discret); }
+.reglage-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.reglage-note { margin: 0; font-size: 12.5px; color: var(--discret); }

@@ -70,18 +70,14 @@ Les paquets sont dans `src-tauri/target/release/bundle/` :
 
 ### En faire le gestionnaire de fichiers par défaut (Linux)
 
-Une fois le paquet installé, repérez le nom de son raccourci puis déclarez-le pour les dossiers :
+Dans Ariane : **Réglages** (icône à côté du numéro de version, en bas de la barre latérale) › **Faire d'Ariane le gestionnaire de fichiers**. Le panneau montre ce qui passe déjà par Ariane et se défait d'un clic (« Rendre la main à Fichiers (Nautilus) »). Rien n'est modifié en dehors du dossier personnel :
 
-```bash
-ls /usr/share/applications | grep -i ariane
-xdg-mime default <nom-du-fichier>.desktop inode/directory
-```
+- `xdg-mime default <Ariane>.desktop inode/directory` (dans `~/.config/mimeapps.list`) : les dossiers ouverts depuis une autre application s'ouvrent dans Ariane. Pour une AppImage, Ariane crée `~/.local/share/applications/ariane-appimage.desktop`.
+- Le service D-Bus `org.freedesktop.FileManager1` : « Afficher dans le dossier » de Chrome, Firefox, VS Code… ouvre Ariane, même fermée, grâce à `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`. Ce fichier se vérifie à chaque lancement : si Ariane a été désinstallée ou n'est plus le gestionnaire par défaut, il s'efface et Nautilus reprend la main. Nautilus, s'il tourne déjà en arrière-plan (il sert aussi de fenêtre « Ouvrir » à GNOME), garde ce service jusqu'à sa fermeture : le panneau le signale et propose de le fermer.
 
-Pour revenir à Nautilus : `xdg-mime default org.gnome.Nautilus.desktop inode/directory`.
+Fenêtre unique : une Ariane lancée alors qu'une autre tourne (`ariane ~/Projets`, un dossier ouvert depuis une autre application) passe sa demande à la première par D-Bus (`fr.ariane.desktop`) et s'arrête ; un onglet s'ouvre dans la fenêtre existante, qui passe au premier plan (jeton d'activation Wayland transmis).
 
-Ariane répond alors aussi aux « Afficher dans le dossier » de VS Code, Firefox, Chrome… (service D-Bus `org.freedesktop.FileManager1`), même fermée : elle enregistre pour cela `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`. Ce fichier se vérifie à chaque lancement : si Ariane a été désinstallée ou n'est plus le gestionnaire par défaut, il s'efface et Nautilus reprend la main. Tant que Nautilus est ouvert, c'est lui qui garde ce service.
-
-L'application accepte un dossier en argument (`ariane ~/Projets`), qu'elle ouvre dans un nouvel onglet.
+Sous Windows, l'Explorateur reste le gestionnaire du système : « Afficher dans le dossier » des autres applications l'ouvre toujours.
 
 ## Publier sur GitHub, avec mises à jour automatiques
 

@@ -17,6 +17,7 @@ const TRACES = {
   document: '<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>',
   // Balai : manche, ligature, brosse évasée, et une étincelle
   nuage: '<path d="M7 19h10.5a4.5 4.5 0 0 0 .4-8.98A6 6 0 0 0 6.3 9.5 4.75 4.75 0 0 0 7 19z"/>',
+  reglages: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
   balai: '<path d="M12 2v8"/><path d="M8 13v-1.5A1.5 1.5 0 0 1 9.5 10h5a1.5 1.5 0 0 1 1.5 1.5V13"/><path d="M7 13h10l2 8H5z"/><path d="M10 21l.4-4M14 21l-.4-4"/><path d="M19 2.5c.2 1.1.9 1.8 2 2-1.1.2-1.8.9-2 2-.2-1.1-.9-1.8-2-2 1.1-.2 1.8-.9 2-2z"/>',
   corbeille: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>',
   ouvrir: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',

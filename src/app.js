@@ -1468,7 +1468,8 @@ function renderBarre() {
     ? ''
     : `<button class="icone-btn mini verif-maj${etat.verificationEnCours ? ' tourne' : ''}${etat.majAJour ? ' ok' : ''}" data-action="verifier-maj"
         aria-label="Rechercher une mise à jour" title="Rechercher une mise à jour">${ic(etat.majAJour ? 'coche' : 'actualiser', 15)}</button>`;
-  const blocVersion = `${boutonMaj}<div class="ligne-version"><button class="version" data-action="nouveautes" title="Voir les nouveautés">${etat.version ? `Ariane ${esc(etat.version)}` : 'Ariane'}</button>${boutonTheme}${boutonVerif}</div>`;
+  const boutonReglages = `<button class="icone-btn mini" data-action="reglages" aria-label="Réglages" title="Réglages">${ic('reglages', 15)}</button>`;
+  const blocVersion = `${boutonMaj}<div class="ligne-version"><button class="version" data-action="nouveautes" title="Voir les nouveautés">${etat.version ? `Ariane ${esc(etat.version)}` : 'Ariane'}</button>${boutonReglages}${boutonTheme}${boutonVerif}</div>`;
   $('#barre-pied').innerHTML = `
     ${blocVersion}
     <button class="epingle" data-action="diviser">${ic('diviser', 18)}<span>${config.deuxPanneaux ? 'Un seul panneau' : 'Deux panneaux'}</span></button>
@@ -2342,6 +2343,114 @@ async function nouveautesApresMiseAJour() {
 }
 
 /** Fenêtre « Quoi de neuf ». Sans liste : tout l'historique. */
+// ——— Réglages : Ariane gestionnaire de fichiers du système (Linux) ———
+// gestionnaire.rs fait le réglage (xdg-mime, service « Afficher dans le dossier ») et le défait ;
+// tout reste dans le dossier de l'utilisateur.
+
+/** « org.gnome.Nautilus.desktop », « nautilus » → « Fichiers (Nautilus) ». */
+function nomProgramme(id) {
+  if (!id) return null;
+  const bas = id.toLowerCase();
+  if (bas.includes('ariane')) return 'Ariane';
+  if (bas.includes('nautilus')) return 'Fichiers (Nautilus)';
+  return id.replace(/\.desktop$/i, '');
+}
+
+let reglagesJeton = 0;
+
+async function ouvrirReglages() {
+  const jeton = ++reglagesJeton;
+  $('#modale').innerHTML = `<div class="voile">
+    <div class="modale reglages" role="dialog" aria-modal="true" aria-labelledby="titre-reglages">
+      <h2 id="titre-reglages">Réglages</h2>
+      <section class="reglage" aria-labelledby="titre-gestionnaire">
+        <h3 id="titre-gestionnaire">Gestionnaire de fichiers du système</h3>
+        <div class="reglage-contenu"><p class="reglage-aide">Lecture…</p></div>
+      </section>
+      <div class="actions"><span class="pousse"></span><button type="button" class="bouton principal" data-r="fermer">Fermer</button></div>
+    </div></div>`;
+  const voile = $('#modale .voile');
+  voile.addEventListener('mousedown', (ev) => ev.target === voile && fermerModale());
+  $('#modale [data-r="fermer"]').addEventListener('click', fermerModale);
+  $('#modale .reglages').addEventListener('click', (ev) => {
+    const r = ev.target.closest('[data-reglage]')?.dataset.reglage;
+    if (r) actionReglage(r, ev.target.closest('button'));
+  });
+  $('#modale [data-r="fermer"]').focus();
+  let etatSysteme = null;
+  try {
+    etatSysteme = await api.etatIntegration();
+  } catch {
+    /* état inconnu : on l'affiche comme indisponible */
+  }
+  if (jeton === reglagesJeton) afficherIntegration(etatSysteme);
+}
+
+function afficherIntegration(s) {
+  const zone = $('#modale .reglages .reglage-contenu');
+  if (!zone) return;
+  if (!s?.disponible) {
+    zone.innerHTML = `<p class="reglage-aide">Sous Windows, l’Explorateur reste le gestionnaire de fichiers du système : « Afficher dans le dossier » des autres applications (Chrome, VS Code…) l’ouvre toujours. Windows ne permet pas de le remplacer proprement.</p>`;
+    return;
+  }
+  const service = s.afficher_dans_dossier;
+  const ligne = (ok, titre, detail) => `<li class="${ok ? 'ok' : 'non'}">${ic(ok ? 'coche' : 'x', 15)}<div><strong>${titre}</strong><span>${detail}</span></div></li>`;
+  const avant = nomProgramme(s.defaut);
+  let html = `<p class="reglage-aide">Pour que les autres applications ouvrent Ariane plutôt que Fichiers (Nautilus) : un dossier ouvert depuis une application, « Afficher dans le dossier » des téléchargements de Chrome, de Firefox, de VS Code…</p>
+    <ul class="reglage-etats">
+      ${ligne(s.par_defaut, 'Ouvrir les dossiers', s.par_defaut ? 'Ariane' : `Aujourd’hui : ${esc(avant ?? 'aucun programme choisi')}`)}
+      ${ligne(
+        service === 'ariane',
+        '« Afficher dans le dossier »',
+        service === 'ariane'
+          ? 'Ariane'
+          : !s.par_defaut
+            ? esc(nomProgramme(service) ?? 'Fichiers (Nautilus)')
+            : service
+              ? `${esc(nomProgramme(service))} le garde tant qu’il est ouvert`
+              : 'Ariane, dès la première demande'
+      )}
+    </ul>`;
+  if (!s.par_defaut) {
+    html += `<div class="reglage-actions"><button type="button" class="bouton principal" data-reglage="activer">Faire d’Ariane le gestionnaire de fichiers</button></div>
+      <p class="reglage-note">Réversible à tout moment depuis ce panneau. Rien n’est modifié en dehors de votre dossier personnel.</p>`;
+  } else {
+    const bloque = service && service !== 'ariane';
+    // Seul Nautilus sait se fermer par « nautilus -q » ; un autre gestionnaire (Nemo, Dolphin…) se ferme à la main
+    const nautilus = bloque && /nautilus/i.test(service);
+    const qui = esc(nomProgramme(service));
+    html += `<div class="reglage-actions">
+      ${nautilus ? `<button type="button" class="bouton principal" data-reglage="fermer-nautilus">Fermer ${qui}</button>` : ''}
+      <button type="button" class="bouton" data-reglage="desactiver">Rendre la main à Fichiers (Nautilus)</button></div>
+      ${nautilus ? `<p class="reglage-note">${qui} tourne en arrière-plan et garde « Afficher dans le dossier ». Le fermer le rend à Ariane ; ses fenêtres ouvertes se fermeront.</p>` : ''}
+      ${bloque && !nautilus ? `<p class="reglage-note">${qui} garde « Afficher dans le dossier » tant qu’il est ouvert : fermez-le pour qu’Ariane le prenne.</p>` : ''}`;
+  }
+  zone.innerHTML = html;
+}
+
+async function actionReglage(r, bouton) {
+  if (bouton) bouton.disabled = true;
+  const appel = { activer: api.activerIntegration, desactiver: api.desactiverIntegration, 'fermer-nautilus': api.fermerNautilus }[r];
+  if (!appel) return;
+  try {
+    await appel();
+    if (r === 'activer') notifier('Ariane est maintenant le gestionnaire de fichiers.');
+    if (r === 'desactiver') notifier('Fichiers (Nautilus) a repris la main.');
+  } catch (e) {
+    erreur(e);
+  }
+  // Le service change de main un instant plus tard : on relit l'état après coup
+  const jeton = reglagesJeton;
+  setTimeout(async () => {
+    if (jeton !== reglagesJeton || !$('#modale .reglages')) return;
+    try {
+      afficherIntegration(await api.etatIntegration());
+    } catch {
+      /* on garde l'affichage */
+    }
+  }, 700);
+}
+
 async function ouvrirNouveautes(notes = null, apresMiseAJour = false) {
   const liste = notes ?? (await chargerNouveautes());
   const date = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
@@ -3354,6 +3463,7 @@ function actionBarre(action, d) {
     case 'verifier-maj': return verifierMiseAJour({ manuel: true });
     case 'theme': return basculerModeSombre();
     case 'nouveautes': return ouvrirNouveautes();
+    case 'reglages': return ouvrirReglages();
     case 'filtre-tag': return ouvrirVueTag(d.id);
     case 'diviser':
       config.deuxPanneaux = !config.deuxPanneaux;
@@ -3689,6 +3799,14 @@ function clavier(ev) {
 
 // ——— Demandes du système (Linux) : « Afficher dans le dossier » depuis VS Code, Firefox… ———
 
+/** Un nouvel onglet sur ce dossier. Une adresse réseau (smb://…, \\serveur\partage) passe par
+ *  naviguer, qui sait monter le partage et demander la connexion. */
+function ouvrirDansUnOnglet(i, chemin) {
+  if (!/^(\\\\|smb:\/\/)/i.test(chemin)) return nouvelOnglet(i, chemin);
+  nouvelOnglet(i, dossierCourant(i) || standards.accueil);
+  naviguer(i, chemin);
+}
+
 async function traiterDemandesSysteme() {
   let demandes = [];
   try {
@@ -3699,7 +3817,7 @@ async function traiterDemandesSysteme() {
   for (const d of demandes) {
     const i = etat.actif;
     if (d.mode === 'dossiers') {
-      for (const c of d.chemins) nouvelOnglet(i, c);
+      for (const c of d.chemins) ouvrirDansUnOnglet(i, c);
       continue;
     }
     // Éléments : leur dossier s'ouvre dans un nouvel onglet, avec les éléments sélectionnés
@@ -3734,7 +3852,9 @@ async function demarrer() {
 
   // Dossier passé en argument (ariane ~/Projets) : ouvert dans un onglet
   const initial = await api.cheminInitial().catch(() => null);
-  if (initial) {
+  // Une adresse réseau s'ouvre plus bas, une fois l'interface prête (il faut peut-être monter le partage)
+  const initialReseau = initial && /^(\\\\|smb:\/\/)/i.test(initial);
+  if (initial && !initialReseau) {
     const p = panneau(0);
     p.onglets.push({ chemin: initial, histo: [initial], pos: 0 });
     p.ongletActif = p.onglets.length - 1;
@@ -3744,6 +3864,7 @@ async function demarrer() {
   renderBarre();
   brancherEvenements();
   for (let i = 0; i < nbPanneaux(); i++) charger(i);
+  if (initialReseau) ouvrirDansUnOnglet(0, initial);
   // On écoute d'abord, puis on prend celles reçues pendant le démarrage : aucune ne se perd entre les deux
   window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme).then(traiterDemandesSysteme, traiterDemandesSysteme);
   window.__TAURI__.event.listen('dossier-modifie', ({ payload }) => dossierModifie(payload));

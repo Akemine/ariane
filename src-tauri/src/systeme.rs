@@ -130,6 +130,10 @@ pub fn ouvrir_vscode(chemin: String) -> Result<(), String> {
 #[tauri::command]
 pub fn chemin_initial() -> Option<String> {
     let argument = std::env::args().skip(1).find(|a| !a.starts_with('-'))?;
+    // smb://serveur/partage (un dossier réseau ouvert depuis GNOME) : l'interface le montera
+    if argument.contains("://") && !argument.starts_with("file://") {
+        return Some(argument);
+    }
     let chemin = match argument.strip_prefix("file://") {
         Some(reste) => decoder_uri(reste),
         None => argument,

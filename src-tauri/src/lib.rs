@@ -18,6 +18,10 @@ mod surveillance;
 mod systeme;
 
 pub fn run() {
+    // Linux : une Ariane tourne déjà ? Elle ouvre la demande dans sa fenêtre, celle-ci s'arrête là
+    if gestionnaire::transmettre_a_l_instance_ouverte() {
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Aperçu rapide : images, vidéos, sons et PDF servis par morceaux (voir apercu.rs)
@@ -71,6 +75,10 @@ pub fn run() {
             systeme::ouvrir_vscode,
             systeme::chemin_initial,
             gestionnaire::prendre_demandes,
+            gestionnaire::etat_integration,
+            gestionnaire::activer_integration,
+            gestionnaire::desactiver_integration,
+            gestionnaire::fermer_nautilus,
             config::lire_config,
             config::ecrire_config,
         ])
