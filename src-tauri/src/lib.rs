@@ -9,6 +9,7 @@ mod git;
 mod jeux;
 mod maj;
 mod menage;
+mod nuages;
 mod peripheriques;
 mod presse_papiers;
 mod recherche;
@@ -52,6 +53,7 @@ pub fn run() {
             apercu::lire_fichier,
             menage::analyser_menage,
             menage::ressortir_de_la_corbeille,
+            nuages::jauges_nuages,
             presse_papiers::ecrire_presse_papiers,
             presse_papiers::lire_presse_papiers,
             presse_papiers::vider_presse_papiers,

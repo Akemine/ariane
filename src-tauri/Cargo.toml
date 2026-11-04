@@ -57,6 +57,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_Diagnostics_Debug",
+  "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_IO",
   "Win32_System_Ioctl",
 ] }
+# Jauge OneDrive : la même interface que l'Explorateur (déjà compilé pour Tauri)
+windows = { version = "0.61", features = ["Storage_Provider", "Win32_System_Com"] }

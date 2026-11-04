@@ -50,7 +50,62 @@ pub struct Standards {
     images: Option<String>,
     musique: Option<String>,
     videos: Option<String>,
+    /// Windows : les dossiers OneDrive (perso, et un par compte pro)
+    onedrive: Vec<Nuage>,
     separateur: String,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Nuage {
+    nom: String,
+    chemin: String,
+    /// OneDrive.exe, pour afficher son icône
+    executable: Option<String>,
+}
+
+/// Les comptes OneDrive sont rangés dans le registre : « Personal », « Business1 », « Business2 »…
+#[cfg(windows)]
+fn dossiers_onedrive() -> Vec<Nuage> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let Ok(comptes) = hkcu.open_subkey(r"Software\Microsoft\OneDrive\Accounts") else { return Vec::new() };
+    // Installé pour l'utilisateur (le cas courant) ou pour toute la machine
+    let executable = [
+        dirs::data_local_dir().map(|d| d.join(r"Microsoft\OneDrive\OneDrive.exe")),
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(r"SOFTWARE\Microsoft\OneDrive")
+            .and_then(|k| k.get_value::<String, _>("OneDriveTrigger"))
+            .ok()
+            .map(PathBuf::from),
+        Some(PathBuf::from(r"C:\Program Files\Microsoft OneDrive\OneDrive.exe")),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.is_file())
+    .map(|p| texte(&p));
+    let mut liste: Vec<(String, Nuage)> = comptes
+        .enum_keys()
+        .flatten()
+        .filter_map(|id| {
+            let cle = comptes.open_subkey(&id).ok()?;
+            let dossier = PathBuf::from(cle.get_value::<String, _>("UserFolder").ok()?);
+            if !dossier.is_dir() {
+                return None;
+            }
+            // « OneDrive - Tuffigo Rapidex » : le nom du dossier dit déjà de quel compte pro il s'agit
+            let nom = if id == "Personal" { "OneDrive".to_string() } else { nom_de(&dossier) };
+            Some((id, Nuage { nom, chemin: texte(&dossier), executable: executable.clone() }))
+        })
+        .collect();
+    // Le compte perso d'abord, puis les comptes pro dans l'ordre
+    liste.sort_by(|a, b| (a.0 != "Personal", &a.0).cmp(&(b.0 != "Personal", &b.0)));
+    liste.into_iter().map(|(_, n)| n).collect()
+}
+
+#[cfg(not(windows))]
+fn dossiers_onedrive() -> Vec<Nuage> {
+    Vec::new()
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -550,6 +605,7 @@ pub fn dossiers_standards() -> Standards {
         images: t(dirs::picture_dir()),
         musique: t(dirs::audio_dir()),
         videos: t(dirs::video_dir()),
+        onedrive: dossiers_onedrive(),
         separateur: std::path::MAIN_SEPARATOR_STR.to_string(),
     }
 }
@@ -799,6 +855,19 @@ mod tests {
         let p = Path::new("/run/user/1000/gvfs/smb-share:server=192.0.0.119,share=data/TuffigoRapidex");
         let noms: Vec<String> = segments(p).into_iter().map(|s| s.nom).collect();
         assert_eq!(noms, ["data sur 192.0.0.119", "TuffigoRapidex"]);
+    }
+
+    /// Les comptes OneDrive de ce PC (à lancer à la main).
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn onedrive_de_ce_pc() {
+        let liste = dossiers_onedrive();
+        println!("{liste:#?}");
+        if std::env::var_os("OneDrive").is_some() {
+            assert!(!liste.is_empty());
+            assert_eq!(liste[0].nom, "OneDrive");
+        }
     }
 
     #[test]

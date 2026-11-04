@@ -81,6 +81,7 @@ const etat = {
   peripheriques: [], // clés USB, disques externes, cartes SD, CD branchés
   ejection: null, // id du périphérique en cours d'éjection
   apercu: null, // { i, chemin, jeton } pendant l'aperçu rapide (Espace)
+  jauges: [], // remplissage de OneDrive : { chemin, utilise, total, libelle }
   silenceRetraits: 0, // jusqu'à cette heure, pas de « Périphérique retiré » (on vient d'éjecter)
   iconesApps: {}, // chemin d'un .exe → image de son icône
   version: '', // version installée
@@ -1070,6 +1071,8 @@ function dossiersDeBase() {
   const s = standards;
   return [
     { chemin: s.accueil, libelle: 'Accueil', icone: 'maison', couleur: '#2563EB' },
+    // Windows : OneDrive (perso, puis « OneDrive - Entreprise »), avec l'icône de OneDrive.exe
+    ...(s.onedrive ?? []).map((n) => ({ chemin: n.chemin, libelle: n.nom, icone: 'nuage', couleur: '#0078D4', exe: n.executable, nuage: true })),
     s.bureau && { chemin: s.bureau, libelle: 'Bureau', icone: 'ecran', couleur: '#0891B2' },
     s.documents && { chemin: s.documents, libelle: 'Documents', icone: 'document', couleur: '#7C3AED' },
     s.telechargements && { chemin: s.telechargements, libelle: 'Téléchargements', icone: 'telecharger', couleur: '#16A34A' },
@@ -1285,11 +1288,38 @@ async function chargerJeux() {
   renderBarre();
   const exes = etat.lanceurs.flatMap((l) => [l.executable, ...l.jeux.map((j) => j.executable)]).filter(Boolean);
   if (!exes.length) return;
+  await chargerIcones(exes);
+}
+
+// ——— Remplissage de OneDrive (Windows 11) ———
+// nuages.rs le demande à OneDrive comme l'Explorateur ; au démarrage, puis au retour dans la
+// fenêtre (au plus une fois par minute : ça change peu).
+
+let jaugesLues = 0;
+
+function jaugeNuage(chemin) {
+  return etat.jauges.find((j) => j.chemin.toLowerCase() === chemin.toLowerCase()) ?? null;
+}
+
+async function chargerJauges() {
+  if (!standards.onedrive?.length || Date.now() - jaugesLues < 60_000) return;
+  jaugesLues = Date.now();
   try {
-    etat.iconesApps = await api.iconesApplications(exes);
+    etat.jauges = await api.jaugesNuages();
     renderBarre();
   } catch {
-    /* pas d'icône : la lettre de couleur reste affichée */
+    /* pas de jauge : le raccourci reste */
+  }
+}
+
+/** Icônes des .exe (launchers, OneDrive), ajoutées à celles déjà connues. */
+async function chargerIcones(exes) {
+  if (!exes.length) return;
+  try {
+    etat.iconesApps = { ...etat.iconesApps, ...(await api.iconesApplications(exes)) };
+    renderBarre();
+  } catch {
+    /* pas d'icône : le dessin de repli reste affiché */
   }
 }
 
@@ -1325,7 +1355,15 @@ function renderBarre() {
     )
     .join('');
   const base = dossiersDeBase()
-    .map((f) => `<button class="epingle base" data-action="aller" data-chemin="${esc(f.chemin)}" data-depot="${esc(f.chemin)}" title="${esc(f.chemin)}">${ic(f.icone, 19, `style="color:${f.couleur}"`)}<span>${f.libelle}</span></button>`)
+    .map((f) => {
+      const icone = iconeApplication(f.exe, ic(f.icone, 19, `style="color:${f.couleur}"`), 19);
+      // OneDrive : la jauge que OneDrive donne à l'Explorateur (Windows 11)
+      const j = f.nuage && jaugeNuage(f.chemin);
+      if (!j) return `<button class="epingle base" data-action="aller" data-chemin="${esc(f.chemin)}" data-depot="${esc(f.chemin)}" title="${esc(f.chemin)}">${icone}<span>${esc(f.libelle)}</span></button>`;
+      const pct = Math.min(100, Math.round((j.utilise / j.total) * 100));
+      return `<button class="epingle base avec-jauge" data-action="aller" data-chemin="${esc(f.chemin)}" data-depot="${esc(f.chemin)}" title="${esc(`${f.chemin} · ${j.libelle}`)}">${icone}
+        <span class="peripherique-texte"><span>${esc(f.libelle)}</span><span class="jauge${pct >= 90 ? ' pleine' : ''}" aria-label="${esc(j.libelle)}"><i style="width:${pct}%"></i></span></span></button>`;
+    })
     .join('');
   const jeux = htmlJeux();
   const peripheriques = htmlPeripheriques();
@@ -2765,7 +2803,8 @@ function exclusMenage() {
 
 /** Épinglés : jamais proposés eux-mêmes, mais un dossier épinglé (Téléchargements…) est passé en revue. */
 function epinglesMenage() {
-  return [...new Set(config.espaces.flatMap((e) => e.epingles.map((x) => x.chemin)))];
+  const onedrive = (standards.onedrive ?? []).map((n) => n.chemin);
+  return [...new Set([...config.espaces.flatMap((e) => e.epingles.map((x) => x.chemin)), ...onedrive])];
 }
 
 function ouvrirMenage(i) {
@@ -3476,6 +3515,7 @@ function brancherEvenements() {
     if (!etat.glisse) rafraichirTout();
     // Des fichiers ont peut-être été copiés dans une autre application : « Coller » les propose
     synchroniserPressePapiers();
+    chargerJauges();
   });
 
   document.addEventListener('keydown', clavier);
@@ -3606,6 +3646,8 @@ async function demarrer() {
   window.__TAURI__.event.listen('demande-systeme', traiterDemandesSysteme).then(traiterDemandesSysteme, traiterDemandesSysteme);
   window.__TAURI__.event.listen('dossier-modifie', ({ payload }) => dossierModifie(payload));
   chargerJeux();
+  chargerIcones([...new Set((standards.onedrive ?? []).map((n) => n.executable).filter(Boolean))]);
+  chargerJauges();
   synchroniserPressePapiers();
   // Clés USB et disques externes : on surveille les branchements (léger : quelques millisecondes)
   suivrePeripheriques({ premiere: true });

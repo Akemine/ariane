@@ -57,6 +57,25 @@ const INTERROMPUS: &[&str] = &["crdownload", "part", "partial", "download"];
 const INSTALLATEURS: &[&str] = &["exe", "msi", "rpm", "deb", "appimage", "dmg", "iso", "pkg", "flatpakref"];
 const ARCHIVES: &[&str] = &[".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".tar", ".zip", ".7z", ".rar"];
 
+/// OneDrive, Dropbox… (Windows) : fichier « en ligne seulement ». Le lire le téléchargerait, et il ne
+/// prend pas de place sur le disque : il n'est ni comparé pour les doublons, ni compté comme gros.
+#[cfg(windows)]
+fn en_ligne_seulement(meta: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    attributs_en_ligne(meta.file_attributes())
+}
+
+#[cfg(not(windows))]
+fn en_ligne_seulement(_meta: &fs::Metadata) -> bool {
+    false
+}
+
+/// FILE_ATTRIBUTE_OFFLINE, FILE_ATTRIBUTE_RECALL_ON_OPEN, FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+#[cfg_attr(not(windows), allow(dead_code))]
+fn attributs_en_ligne(attributs: u32) -> bool {
+    attributs & (0x1000 | 0x4_0000 | 0x40_0000) != 0
+}
+
 fn age_jours(maintenant: SystemTime, meta: &fs::Metadata) -> f64 {
     meta.modified()
         .ok()
@@ -232,9 +251,11 @@ pub fn analyser(racine: &Path, telechargements: Option<&Path>, exclus: &[PathBuf
             if protege(&chemin) {
                 continue;
             }
-            if let Some(categorie) = categorie_fichier(&nom, taille, age, dans_telechargements, &voisins) {
+            let en_ligne = en_ligne_seulement(&meta);
+            let categorie = categorie_fichier(&nom, taille, age, dans_telechargements, &voisins).filter(|c| !(en_ligne && *c == "gros"));
+            if let Some(categorie) = categorie {
                 suggestions.push(Suggestion { chemin: chemin.to_string_lossy().into_owned(), nom, est_dossier: false, taille, modifie: millisecondes(&meta), categorie, original: None });
-            } else if taille >= DOUBLON_MIN && age > RECENT_JOURS && !nom.starts_with('.') {
+            } else if taille >= DOUBLON_MIN && age > RECENT_JOURS && !nom.starts_with('.') && !en_ligne {
                 par_taille.entry(taille).or_default().push(Candidat { chemin, taille, modifie: millisecondes(&meta) });
             }
         }
@@ -391,6 +412,43 @@ mod tests {
         assert_eq!(a.suggestions.iter().find(|s| s.categorie == "compilation").unwrap().taille, 5);
         assert!(a.complet);
         fs::remove_dir_all(&racine).ok();
+    }
+
+    #[test]
+    fn fichiers_en_ligne() {
+        assert!(attributs_en_ligne(0x40_0020)); // archive + « en ligne seulement » (OneDrive)
+        assert!(attributs_en_ligne(0x1000));
+        assert!(!attributs_en_ligne(0x20)); // fichier ordinaire
+        assert!(!attributs_en_ligne(0x8_0020)); // OneDrive « toujours garder sur cet appareil »
+    }
+
+    /// Le vrai OneDrive de ce PC (à lancer à la main) : l'analyse ne doit télécharger aucun fichier
+    /// « en ligne seulement » (leur nombre ne bouge pas).
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn onedrive_de_ce_pc_reste_en_ligne() {
+        let Some(racine) = std::env::var_os("OneDrive").map(PathBuf::from) else { return };
+        let compter = || {
+            let mut n = 0;
+            let mut pile = vec![racine.clone()];
+            while let Some(d) = pile.pop() {
+                for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+                    let Ok(m) = fs::symlink_metadata(e.path()) else { continue };
+                    if m.is_dir() {
+                        pile.push(e.path());
+                    } else if en_ligne_seulement(&m) {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let avant = compter();
+        let a = analyser(&racine, None, &[], &[racine.clone()], SystemTime::now());
+        let apres = compter();
+        println!("{avant} fichiers en ligne seulement ; {} propositions ; {} parcourus", a.suggestions.len(), a.parcourus);
+        assert_eq!(avant, apres, "l'analyse a téléchargé des fichiers");
     }
 
     /// Le vrai dossier Téléchargements de ce PC (à lancer à la main) : ce que le balai y propose.

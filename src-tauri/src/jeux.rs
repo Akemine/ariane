@@ -663,4 +663,18 @@ mod tests {
         assert_eq!(normaliser("C:/Program Files (x86)/Ubisoft/Games/Anno 1800/"), r"C:\Program Files (x86)\Ubisoft\Games\Anno 1800");
         assert_eq!(normaliser("D:\\"), "D:\\");
     }
+
+    /// L'icône d'un vrai .exe de ce PC (à lancer à la main) : ARIANE_EXE=chemin, écrite dans ARIANE_SORTIE.
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn icone_d_un_exe() {
+        let (Ok(exe), Ok(sortie)) = (std::env::var("ARIANE_EXE"), std::env::var("ARIANE_SORTIE")) else { return };
+        let cache = std::env::temp_dir().join(format!("ariane-icones-{}", std::process::id()));
+        let icones = extraire_icones(Some(cache.clone()), vec![exe.clone()]);
+        std::fs::remove_dir_all(cache).ok();
+        let image = icones.get(&exe).expect("pas d'icône");
+        assert!(image.starts_with("data:image/"));
+        std::fs::write(sortie, image).unwrap();
+    }
 }

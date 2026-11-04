@@ -24,6 +24,7 @@ export const api = {
   surveiller: (dossiers) => appeler('surveiller', { dossiers }),
   analyserMenage: (racine, exclus, epingles) => appeler('analyser_menage', { racine, exclus, epingles }),
   ressortir: (chemins) => appeler('ressortir_de_la_corbeille', { chemins }),
+  jaugesNuages: () => appeler('jauges_nuages'),
   ecrirePressePapiers: (chemins, mode) => appeler('ecrire_presse_papiers', { chemins, mode }),
   lirePressePapiers: () => appeler('lire_presse_papiers'),
   viderPressePapiers: () => appeler('vider_presse_papiers'),
