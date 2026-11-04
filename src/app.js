@@ -113,6 +113,8 @@ function nomAffiche(chemin) {
   const tag = tagDeVue(chemin);
   if (tag) return trouverTag(tag)?.libelle ?? 'Tag';
   if (chemin === standards.accueil) return 'Accueil';
+  const base = libelleDeBase(chemin);
+  if (base) return base;
   // Partage monté par GNOME : « data sur 192.0.0.119 »
   const gvfs = /^smb-share:(?=.*\bserver=([^,]+))(?=.*\bshare=([^,]+))/.exec(nomDe(chemin));
   return gvfs ? `${decodeURIComponent(gvfs[2])} sur ${gvfs[1]}` : nomDe(chemin);
@@ -187,6 +189,14 @@ function estSous(chemin, parent) {
   return chemin.startsWith(base);
 }
 /** Nom du dossier spécial (« telechargements », « images »…) ou null. */
+/** Nom français d'un dossier de base. Sur le disque, Windows les appelle « Downloads », « Music »,
+ *  « Desktop »… et l'Explorateur les traduit (desktop.ini) : Ariane fait pareil, partout. */
+function libelleDeBase(chemin) {
+  if (!chemin || !standards) return null;
+  const meme = sousWindows() ? (a, b) => a.toLowerCase() === b.toLowerCase() : (a, b) => a === b;
+  return dossiersDeBase().find((d) => meme(d.chemin, chemin))?.libelle ?? null;
+}
+
 function dossierSpecial(chemin) {
   const s = standards;
   for (const cle of ['accueil', 'telechargements', 'documents', 'images', 'musique', 'videos', 'bureau']) if (s[cle] && s[cle] === chemin) return cle;
@@ -397,6 +407,8 @@ function completer(lu) {
   c.tags ??= {};
   // Ménage : éléments pour lesquels on a répondu « Garder », plus jamais proposés
   if (!Array.isArray(c.menageGardes)) c.menageGardes = [];
+  // Tiroir des tags : rangé tant qu'on ne l'ouvre pas
+  c.tagsOuverts = c.tagsOuverts === true;
   return c;
 }
 
@@ -748,7 +760,8 @@ function calculerVisibles(i) {
   if (!config.afficherCaches && !p.contenu.vueTag) liste = liste.filter((e) => !e.cache);
   if (etat.recherche && etat.recherchePanneau === i) {
     const q = normaliser(etat.recherche);
-    liste = liste.filter((e) => normaliser(e.nom).includes(q));
+    // « télé » trouve aussi le dossier Downloads, affiché « Téléchargements »
+    liste = liste.filter((e) => normaliser(e.nom).includes(q) || (e.est_dossier && normaliser(libelleDeBase(e.chemin) ?? '').includes(q)));
   }
   const { col, sens } = p.tri;
   const parNom = (a, b) => a.nom.localeCompare(b.nom, 'fr', { numeric: true, sensitivity: 'base' });
@@ -929,7 +942,7 @@ function htmlOutils(i) {
       const dernier = k === segments.length - 1;
       // Le dernier segment (le dossier ouvert) ouvre la saisie du chemin, comme un clic dans la barre
       const action = dernier ? (p.contenu.vueTag ? '' : 'editer-chemin') : 'aller';
-      return `<button class="segment${dernier ? ' dernier' : ''}" data-action="${action}" data-chemin="${esc(s.chemin)}" data-depot="${esc(s.chemin)}">${esc(s.nom)}</button>${dernier ? '' : `<span class="chevron">${ic('avance', 14)}</span>`}`;
+      return `<button class="segment${dernier ? ' dernier' : ''}" data-action="${action}" data-chemin="${esc(s.chemin)}" data-depot="${esc(s.chemin)}">${esc(libelleDeBase(s.chemin) ?? s.nom)}</button>${dernier ? '' : `<span class="chevron">${ic('avance', 14)}</span>`}`;
     })
     .join('');
   const g = p.git;
@@ -1027,7 +1040,7 @@ function htmlCorps(i, avecGit) {
       const nom =
         p.renommage === e.chemin
           ? `<input class="renommage" value="${esc(e.nom)}" aria-label="Nouveau nom" spellcheck="false">`
-          : `<span class="nom">${esc(e.nom)}</span>`;
+          : `<span class="nom">${esc((e.est_dossier && libelleDeBase(e.chemin)) || e.nom)}</span>`;
       // Vue d'un tag : on dit où se trouve chaque élément
       const lieu = p.contenu.vueTag ? `<span class="lieu" title="${esc(parentDe(e.chemin))}">${esc(nomAffiche(parentDe(e.chemin)))}</span>` : '';
       return `<div class="${classes.join(' ')}" role="row" aria-selected="${p.selection.has(e.chemin)}" data-idx="${idx}" ${e.est_dossier ? `data-depot="${esc(e.chemin)}"` : ''}>
@@ -1281,6 +1294,19 @@ function menuPeripherique(id, x, y) {
   ouvrirMenu(x, y, html, { type: 'peripherique', id, chemin: p.chemin });
 }
 
+/** Ouvre ou range le tiroir sur place (sans tout redessiner), pour qu'il glisse. */
+function basculerTiroirTags() {
+  config.tagsOuverts = !config.tagsOuverts;
+  sauver();
+  const tiroir = $('#liste-tags');
+  const titre = $('.titre-tiroir');
+  if (!tiroir || !titre) return renderBarre();
+  tiroir.classList.toggle('ouvert', config.tagsOuverts);
+  tiroir.inert = !config.tagsOuverts;
+  titre.setAttribute('aria-expanded', String(config.tagsOuverts));
+  titre.title = config.tagsOuverts ? 'Ranger les tags' : 'Afficher les tags';
+}
+
 /** Un seul jeu : on va dans son dossier. Plusieurs : on déplie la liste. Aucun : dossier du launcher. */
 function cliquerLanceur(id) {
   const l = etat.lanceurs.find((x) => x.id === id);
@@ -1389,6 +1415,13 @@ function renderBarre() {
       return `<button class="tag-btn${on ? ' on' : ''}" data-action="filtre-tag" data-id="${esc(t.id)}" data-tag="${esc(t.id)}" aria-pressed="${on}" style="--c:${t.couleur}"><span class="point"></span><span class="tag-nom">${esc(t.libelle)}</span><span class="compte">${compteTag(t.id) || ''}</span></button>`;
     })
     .join('');
+  // Tiroir des tags : fermé, le titre dit combien il y en a, et lequel est ouvert dans un panneau
+  // (le nombre et le point sont masqués par le CSS quand le tiroir est ouvert)
+  const actif = trouverTag(tagOuvert());
+  const titreTags = `<button class="titre-tiroir" data-action="tiroir-tags" aria-expanded="${config.tagsOuverts}" aria-controls="liste-tags"
+      title="${config.tagsOuverts ? 'Ranger les tags' : 'Afficher les tags'}">${ic('avance', 13)}<span>Tags</span><span class="compte-tiroir">${listeTags().length}</span>${
+        actif ? `<span class="point-tiroir" style="--c:${actif.couleur}" title="Tag « ${esc(actif.libelle)} » ouvert"></span>` : ''
+      }</button>`;
   const espaces = config.espaces
     .map((s) => {
       const c = PALETTE[s.couleur] || PALETTE.violet;
@@ -1414,11 +1447,11 @@ function renderBarre() {
     ${peripheriques}
     ${jeux}
     <section aria-label="Tags">
-      <div class="titre-bloc"><span>Tags</span>
+      <div class="titre-bloc">${titreTags}
         <span class="titre-actions">
         <button class="icone-btn mini" data-action="nouveau-tag" aria-label="Nouveau tag" title="Nouveau tag">${ic('plus', 16)}</button></span>
       </div>
-      ${tags}
+      <div id="liste-tags" class="tiroir${config.tagsOuverts ? ' ouvert' : ''}" ${config.tagsOuverts ? '' : 'inert'}><div>${tags}</div></div>
     </section>
 `;
   // Toujours visibles en bas, même quand la liste du haut défile
@@ -2615,28 +2648,45 @@ function fermerApercu() {
 }
 
 function detailsApercu(e) {
-  const quand = e.modifie != null ? ` · modifié ${dateRelative(e.modifie)}` : '';
-  return `${e.est_dossier ? elements(e.nb_elements) : taille(e.taille)}${quand}`;
+  // Un dossier proposé par le ménage connaît sa taille, pas son nombre d'éléments
+  const poids = !e.est_dossier ? taille(e.taille) : e.nb_elements != null ? elements(e.nb_elements) : e.taille ? taille(e.taille) : '';
+  const quand = e.modifie != null ? `modifié ${dateRelative(e.modifie)}` : '';
+  return [poids, quand].filter(Boolean).join(' · ');
 }
 
 /** `source` : une autre liste que le panneau (le ménage), avec voisin(chemin, ±1) et ouvrir(e). */
 function afficherApercu(i, e, source = null) {
   etat.apercu?.pdf?.destroy();
-  const jeton = (etat.apercu?.jeton ?? 0) + 1;
-  etat.apercu = { i, chemin: e.chemin, jeton, source, entree: e };
-  const encore = () => etat.apercu?.jeton === jeton;
+  // `pile` : l'élément, puis ce qu'on ouvre à l'intérieur quand c'est un dossier
+  etat.apercu = { i, chemin: e.chemin, jeton: etat.apercu?.jeton ?? 0, source, entree: e, pile: [e], liste: [] };
+  dessinerApercu();
+}
+
+/** Affiche le haut de la pile : l'élément lui-même, ou un fichier / sous-dossier ouvert dedans. */
+function dessinerApercu() {
+  const a = etat.apercu;
+  a.pdf?.destroy();
+  a.pdf = null;
+  const e = a.pile.at(-1);
+  const dedans = a.pile.length > 1;
+  const jeton = ++a.jeton;
+  const encore = () => etat.apercu === a && a.jeton === jeton;
+  const trajet = dedans ? ` · dans ${a.pile.slice(0, -1).map((x) => esc(x.nom)).join(' › ')}` : '';
+  const ouvrir = a.source?.libelleOuvrir ?? (e.est_dossier ? 'Ouvrir le dossier' : 'Ouvrir');
+  const aide = dedans ? 'Retour arrière : revenir' : '↑ ↓ élément voisin';
   const zone = $('#apercu');
   zone.hidden = false;
   zone.innerHTML = `<div class="apercu-voile">
     <div class="apercu-fenetre" role="dialog" aria-label="Aperçu de ${esc(e.nom)}">
       <header class="apercu-tete">
+        ${dedans ? `<button type="button" class="icone-btn" data-apercu="retour" aria-label="Revenir" title="Revenir à « ${esc(a.pile.at(-2).nom)} » (Retour arrière)">${ic('retour')}</button>` : ''}
         <span class="apercu-icone">${icone(e)}</span>
-        <div class="apercu-titre"><strong title="${esc(e.chemin)}">${esc(e.nom)}</strong><span class="apercu-details">${detailsApercu(e)}</span></div>
-        <button type="button" class="bouton" data-apercu="ouvrir">${source?.libelleOuvrir ?? (e.est_dossier ? 'Ouvrir le dossier' : 'Ouvrir')}</button>
+        <div class="apercu-titre"><strong title="${esc(e.chemin)}">${esc(e.nom)}</strong><span class="apercu-details">${detailsApercu(e)}${trajet}</span></div>
+        <button type="button" class="bouton" data-apercu="ouvrir">${ouvrir}</button>
         <button type="button" class="icone-btn" data-apercu="fermer" aria-label="Fermer l’aperçu" title="Fermer (Espace)">${ic('x')}</button>
       </header>
       <div class="apercu-corps"><p class="apercu-vide">Chargement…</p></div>
-      <footer class="apercu-pied">↑ ↓ élément voisin · Entrée ouvrir · Espace ou Échap fermer</footer>
+      <footer class="apercu-pied">${aide}${e.est_dossier ? ' · clic : voir un élément' : ''} · Entrée ouvrir · Espace ou Échap fermer</footer>
     </div></div>`;
   const corps = zone.querySelector('.apercu-corps');
   remplirApercu(e, corps, encore).catch((err) => {
@@ -2657,8 +2707,13 @@ async function remplirApercu(e, corps, encore) {
     const liste = c.entrees
       .filter((x) => config.afficherCaches || !x.cache)
       .sort((a, b) => (a.est_dossier !== b.est_dossier ? (a.est_dossier ? -1 : 1) : a.nom.localeCompare(b.nom, 'fr', { numeric: true })));
+    // Chaque élément se clique : un dossier s'ouvre dans l'aperçu, un fichier s'affiche (Retour pour revenir)
+    etat.apercu.liste = liste;
     corps.innerHTML = liste.length
-      ? `<ul class="apercu-liste">${liste.slice(0, 200).map((x) => `<li>${icone(x)}<span>${esc(x.nom)}</span></li>`).join('')}</ul>${liste.length > 200 ? `<p class="apercu-note">… et ${liste.length - 200} autres</p>` : ''}`
+      ? `<ul class="apercu-liste">${liste
+          .slice(0, 500)
+          .map((x, k) => `<li><button type="button" data-apercu="entrer" data-k="${k}" title="${esc(x.est_dossier ? `Entrer dans « ${x.nom} »` : `Voir « ${x.nom} »`)}">${icone(x)}<span>${esc(x.nom)}</span><small>${x.est_dossier ? elements(x.nb_elements) : taille(x.taille)}</small></button></li>`)
+          .join('')}</ul>${liste.length > 500 ? `<p class="apercu-note">… et ${liste.length - 500} autres</p>` : ''}`
       : '<p class="apercu-vide">Dossier vide</p>';
   } else if (EXT_IMAGE.has(ext)) {
     const img = new Image();
@@ -2740,6 +2795,8 @@ function clavierApercu(ev, touche) {
     return true;
   }
   if (touche === 'ArrowUp' || touche === 'ArrowDown') {
+    // Entré dans un dossier : ↑ ↓ ne sautent pas à un autre élément (Retour arrière pour remonter)
+    if (etat.apercu.pile.length > 1) return true;
     const delta = touche === 'ArrowUp' ? -1 : 1;
     const { source } = etat.apercu;
     if (source) {
@@ -2756,6 +2813,10 @@ function clavierApercu(ev, touche) {
     ouvrirDepuisApercu();
     return true;
   }
+  if (touche === 'Backspace') {
+    revenirApercu();
+    return true;
+  }
   const corps = $('#apercu .apercu-corps');
   const defilement = { PageDown: 0.9, PageUp: -0.9, Home: -1e6, End: 1e6 }[touche];
   if (corps && defilement) {
@@ -2770,16 +2831,35 @@ function brancherApercu() {
     if (!etat.apercu) return;
     // Un clic à côté de la fenêtre la ferme
     if (ev.target.classList.contains('apercu-voile')) return fermerApercu();
-    const action = ev.target.closest('[data-apercu]')?.dataset.apercu;
+    const bouton = ev.target.closest('[data-apercu]');
+    const action = bouton?.dataset.apercu;
     if (action === 'fermer') return fermerApercu();
-    if (action === 'ouvrir') ouvrirDepuisApercu();
+    if (action === 'ouvrir') return ouvrirDepuisApercu();
+    if (action === 'retour') return revenirApercu();
+    if (action === 'entrer') {
+      const x = etat.apercu.liste[+bouton.dataset.k];
+      if (!x) return;
+      etat.apercu.pile.push(x);
+      dessinerApercu();
+    }
   });
 }
 
+/** Remonte d'un niveau quand on est entré dans un dossier ; false s'il n'y a rien au-dessus. */
+function revenirApercu() {
+  if (!etat.apercu || etat.apercu.pile.length < 2) return false;
+  etat.apercu.pile.pop();
+  dessinerApercu();
+  return true;
+}
+
 function ouvrirDepuisApercu() {
-  const { i, chemin, source, entree } = etat.apercu;
+  const { i, chemin, source, pile } = etat.apercu;
+  const cible = pile.at(-1);
   fermerApercu();
-  if (source) return source.ouvrir(entree);
+  if (source) return source.ouvrir(cible);
+  // Entré dans un dossier : on ouvre ce qu'on regarde (dossier dans le panneau, fichier avec son application)
+  if (pile.length > 1) return ouvrirEntree(i, cible);
   const e = panneau(i).visibles.find((x) => x.chemin === chemin);
   if (e) ouvrirEntree(i, e);
 }
@@ -2861,13 +2941,15 @@ function lieuMenage(chemin) {
 
 function ligneMenage(s) {
   const detail = s.original ? ` · copie de « ${esc(nomDe(s.original))} »${parentDe(s.original) === parentDe(s.chemin) ? '' : `, ${esc(lieuMenage(s.original))}`}` : '';
+  // Un clic sur l'icône ou le nom ouvre l'aperçu : pour un dossier, on peut entrer dedans avant de décider
+  const voir = s.est_dossier ? 'Voir le contenu' : 'Aperçu';
   return `<li class="menage-ligne" tabindex="-1" data-k="${s.k}">
-    <span class="menage-icone">${icone(s)}</span>
-    <div class="menage-nom"><strong title="${esc(s.chemin)}">${esc(s.nom)}</strong><span>${esc(lieuMenage(s.chemin))}${detail}</span></div>
+    <span class="menage-icone" data-m="voir" title="${voir} (Espace)">${icone(s)}</span>
+    <div class="menage-nom" data-m="voir" title="${voir} (Espace)"><strong>${esc(s.nom)}</strong><span title="${esc(s.chemin)}">${esc(lieuMenage(s.chemin))}${detail}</span></div>
     <span class="menage-poids">${s.categorie === 'vide' ? '—' : taille(s.taille)}</span>
     <span class="menage-age" title="${esc(dateComplete(s.modifie))}">${dateRelative(s.modifie)}</span>
     <span class="menage-actions">
-      <button type="button" class="icone-btn mini" data-m="voir" aria-label="Aperçu" title="Aperçu (Espace)">${ic('oeil', 16)}</button>
+      <button type="button" class="icone-btn mini" data-m="voir" aria-label="${voir}" title="${voir} (Espace)">${ic('oeil', 16)}</button>
       <button type="button" class="bouton petit" data-m="garder" title="Ne plus le proposer (G)">Garder</button>
       <button type="button" class="bouton petit danger" data-m="jeter" title="Mettre à la corbeille (Suppr)">Corbeille</button>
     </span>
@@ -3260,7 +3342,11 @@ function actionBarre(action, d) {
     case 'modifier-espace': return ouvrirModaleEspace(espace().id);
     case 'epingler': return dossierCourant(i) && epingler({ chemin: dossierCourant(i), dossier: true });
     case 'ouvrir-fichier': return essayer(api.ouvrir(d.chemin));
-    case 'nouveau-tag': return ouvrirModaleTag();
+    case 'nouveau-tag':
+      // Le nouveau tag doit se voir : le tiroir s'ouvre
+      if (!config.tagsOuverts) basculerTiroirTags();
+      return ouvrirModaleTag();
+    case 'tiroir-tags': return basculerTiroirTags();
     case 'lanceur': return cliquerLanceur(d.id);
     case 'peripherique': return ouvrirPeripherique(d.id);
     case 'ejecter': return ejecterPeripherique(d.id);

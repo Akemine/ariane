@@ -1,5 +1,14 @@
 [
   {
+    "version": "prochaine",
+    "date": "",
+    "points": [
+      "Aperçu d’un dossier (Espace, ou l’œil du ménage) : on peut entrer dedans. Un clic sur un sous-dossier l’ouvre, un clic sur un fichier l’affiche, Retour arrière remonte. Pratique pour vérifier un dossier avant de le jeter.",
+      "Les tags sont rangés dans un tiroir : cliquez sur « Tags » dans la barre latérale pour les afficher ou les ranger. Fermé, il indique combien il y en a, et lequel est ouvert dans un panneau.",
+      "Windows : les dossiers de base gardent leur nom français partout, comme dans l’Explorateur. « Downloads » épinglé s’affiche « Téléchargements », de même dans le chemin, les onglets et la liste (Musique, Images, Vidéos, Bureau…)."
+    ]
+  },
+  {
     "version": "0.8.16",
     "date": "2026-11-04",
     "points": [
