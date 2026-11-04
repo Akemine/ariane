@@ -1,7 +1,7 @@
 [
   {
-    "version": "prochaine",
-    "date": "",
+    "version": "0.8.17",
+    "date": "2026-11-04",
     "points": [
       "Aperçu d’un dossier (Espace, ou l’œil du ménage) : on peut entrer dedans. Un clic sur un sous-dossier l’ouvre, un clic sur un fichier l’affiche, Retour arrière remonte. Pratique pour vérifier un dossier avant de le jeter.",
       "Les tags sont rangés dans un tiroir : cliquez sur « Tags » dans la barre latérale pour les afficher ou les ranger. Fermé, il indique combien il y en a, et lequel est ouvert dans un panneau.",
